@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#141824">
+<title>Spectrum Orbs</title>
+<meta name="description" content="Spectrum Orbs — a kinetic sculpture gallery puzzle. Move the top orb between tubes until each tube holds a single color.">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%234a7de0'/><circle cx='16' cy='16' r='7' fill='%23e8533f'/></svg>">
+</head>
+<body>
+<a class="skip-link" href="#board-status">Skip to board status</a>
+
+<header id="topbar" role="banner">
+  <div class="topbar-inner">
+    <button id="btn-home" class="brand" data-action="home" aria-label="Spectrum Orbs — home">
+      <span class="brand-orb" aria-hidden="true"></span> Spectrum Orbs
+    </button>
+    <div class="topbar-status">
+      <span id="conn-status" class="conn" role="status">Offline</span>
+      <span id="clock-status" class="clock" title="Platform time"></span>
+      <span id="profile-chip" class="profile-chip"></span>
+      <button id="btn-help-top" class="icon-btn" data-action="help" aria-label="Help">?</button>
+      <button id="btn-settings-top" class="icon-btn" data-action="settings" aria-label="Settings">⚙</button>
+    </div>
+  </div>
+</header>
+
+<main id="app">
+
+  <!-- ============================== TITLE ============================== -->
+  <section id="screen-title" class="screen" aria-labelledby="title-heading">
+    <div class="title-hero">
+      <h1 id="title-heading">Spectrum Orbs</h1>
+      <p class="tagline">A kinetic sculpture gallery. Sort every tube to a single color.</p>
+    </div>
+    <nav class="title-menu" aria-label="Main menu">
+      <button class="menu-btn primary" data-action="play-journey">Play <span class="menu-sub" id="journey-progress-label"></span></button>
+      <button class="menu-btn" data-action="play-daily">Daily Challenge <span class="menu-sub" id="daily-label"></span></button>
+      <button class="menu-btn" data-action="mode-select">All Modes</button>
+      <button class="menu-btn" data-action="play-learn">Learn to Play</button>
+      <button class="menu-btn" data-action="scores">Scores &amp; Friends</button>
+      <button class="menu-btn" data-action="profile">Profile &amp; Progress</button>
+    </nav>
+    <p class="title-foot" id="resume-note" hidden></p>
+  </section>
+
+  <!-- ========================== MODE SELECT ============================ -->
+  <section id="screen-modes" class="screen" aria-labelledby="modes-heading" hidden>
+    <h2 id="modes-heading">Choose a mode</h2>
+    <div class="card-grid" id="mode-cards">
+      <button class="card" data-action="setup-journey">
+        <h3>Journey</h3><p>Forty authored stages across five gallery wings. New ideas arrive one at a time.</p>
+        <span class="card-meta">Ranked per stage · ~2–5 min each</span>
+      </button>
+      <button class="card" data-action="setup-daily">
+        <h3>Daily</h3><p>One shared seed for everyone, per UTC day. Compare scores with friends.</p>
+        <span class="card-meta">Ranked · one board per day</span>
+      </button>
+      <button class="card" data-action="setup-practice">
+        <h3>Practice</h3><p>Selectable difficulty, free undo and hints, fresh boards on demand.</p>
+        <span class="card-meta">Unranked · endless</span>
+      </button>
+      <button class="card" data-action="setup-challenge">
+        <h3>Challenge</h3><p>Move limits, speed targets, crowded layouts, restricted tools.</p>
+        <span class="card-meta">Ranked · five trials</span>
+      </button>
+      <button class="card" data-action="setup-learn">
+        <h3>Learn</h3><p>Interactive lessons. One rule at a time — you perform each action.</p>
+        <span class="card-meta">Unranked · five lessons</span>
+      </button>
+      <button class="card" data-action="scores">
+        <h3>Score Chase</h3><p>Global and friends leaderboards on validated seeds and rulesets.</p>
+        <span class="card-meta">Asynchronous comparison</span>
+      </button>
+    </div>
+    <button class="text-btn" data-action="home">← Back to title</button>
+  </section>
+
+  <!-- ============================ SETUP ================================ -->
+  <section id="screen-setup" class="screen" aria-labelledby="setup-heading" hidden>
+    <h2 id="setup-heading">Setup</h2>
+    <div id="setup-body" class="setup-body"></div>
+    <div class="row">
+      <button class="menu-btn primary" id="btn-begin" data-action="begin">Begin</button>
+      <button class="text-btn" data-action="mode-select">← Back</button>
+    </div>
+  </section>
+
+  <!-- ============================= GAME ================================ -->
+  <section id="screen-game" class="screen game-screen" aria-label="Game" hidden>
+
+    <aside id="rail-left" class="rail" aria-label="Objective and progress">
+      <h2 class="rail-heading">Objective</h2>
+      <p id="objective-text">Sort each tube to a single color.</p>
+      <div class="objective-meta">
+        <div><span class="meta-label">Level</span> <span id="hud-level">—</span></div>
+        <div><span class="meta-label">Moves</span> <span id="hud-moves" role="status">0</span></div>
+        <div id="hud-limit-row" hidden><span class="meta-label">Limit</span> <span id="hud-limit"></span></div>
+        <div><span class="meta-label">Time</span> <span id="hud-time" role="timer">0:00</span></div>
+        <div><span class="meta-label">Medal pace</span> <span id="hud-medal">—</span></div>
+      </div>
+      <div class="par-bar" aria-hidden="true"><div id="par-fill" class="par-fill"></div></div>
+      <p class="rail-note" id="hud-mode-note"></p>
+    </aside>
+
+    <div id="playfield">
+      <div id="gl-container"></div>
+      <button id="drawer-left-toggle" class="drawer-toggle left" data-action="toggle-rail-left" aria-label="Toggle objective panel">☰</button>
+      <button id="drawer-right-toggle" class="drawer-toggle right" data-action="toggle-rail-right" aria-label="Toggle actions panel">⚙</button>
+      <div id="tube-labels" aria-hidden="true"></div>
+      <div id="tutorial-card" class="tutorial-card" hidden>
+        <h3 id="tutorial-title"></h3>
+        <p id="tutorial-body"></p>
+        <p class="tutorial-hint" id="tutorial-hint"></p>
+        <div class="row">
+          <button class="text-btn" data-action="tutorial-skip">Skip lesson</button>
+        </div>
+      </div>
+      <div id="board-status-wrap">
+        <h2 class="sr-only" id="board-status-heading">Board status</h2>
+        <div id="board-status" role="group" aria-labelledby="board-status-heading" tabindex="-1"></div>
+      </div>
+    </div>
+
+    <aside id="rail-right" class="rail" aria-label="Actions">
+      <h2 class="rail-heading">Actions</h2>
+      <div class="action-stack">
+        <button class="action-btn" data-action="undo" id="btn-undo">Undo <kbd>U</kbd></button>
+        <button class="action-btn" data-action="hint" id="btn-hint">Hint <kbd>H</kbd></button>
+        <button class="action-btn" data-action="restart" id="btn-restart">Restart <kbd>R</kbd></button>
+        <button class="action-btn" data-action="camera-reset">Camera <kbd>C</kbd></button>
+        <button class="action-btn" data-action="pause">Pause <kbd>Esc</kbd></button>
+      </div>
+      <p class="rail-note" id="invalid-reason" role="alert"></p>
+    </aside>
+
+    <div id="tray" aria-label="Quick actions">
+      <button class="tray-btn" data-action="undo" aria-label="Undo">↶</button>
+      <button class="tray-btn" data-action="hint" aria-label="Hint">💡</button>
+      <button class="tray-btn" data-action="restart" aria-label="Restart">⟳</button>
+      <button class="tray-btn" data-action="pause" aria-label="Pause">⏸</button>
+    </div>
+  </section>
+
+  <!-- ============================ RESULTS ============================== -->
+  <section id="screen-results" class="screen overlay" role="dialog" aria-modal="true" aria-labelledby="results-heading" hidden>
+    <div class="panel wide">
+      <h2 id="results-heading">Results</h2>
+      <p id="results-headline" class="headline"></p>
+      <div id="results-medal" class="medal-row" aria-label="Medal"></div>
+      <table class="score-table" aria-label="Score breakdown">
+        <tbody id="score-rows"></tbody>
+        <tfoot><tr><th scope="row">Total</th><td id="score-total"></td></tr></tfoot>
+      </table>
+      <p id="results-progress" class="rail-note"></p>
+      <div id="results-achievements" class="achievement-row"></div>
+      <p id="results-board-status" class="rail-note"></p>
+      <div class="row wrap">
+        <button class="menu-btn primary" data-action="results-next" id="btn-results-next">Next</button>
+        <button class="menu-btn" data-action="retry">Retry</button>
+        <button class="menu-btn" data-action="home">Title</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= PAUSE =============================== -->
+  <section id="screen-pause" class="screen overlay" role="dialog" aria-modal="true" aria-labelledby="pause-heading" hidden>
+    <div class="panel">
+      <h2 id="pause-heading">Paused</h2>
+      <div class="action-stack">
+        <button class="menu-btn primary" data-action="resume">Resume</button>
+        <button class="menu-btn" data-action="settings">Settings</button>
+        <button class="menu-btn" data-action="help">Help</button>
+        <button class="menu-btn" data-action="restart">Restart board</button>
+        <button class="menu-btn danger" data-action="leave">Leave round</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ SETTINGS ============================= -->
+  <section id="screen-settings" class="screen overlay" role="dialog" aria-modal="true" aria-labelledby="settings-heading" hidden>
+    <div class="panel wide" id="settings-panel">
+      <h2 id="settings-heading">Settings</h2>
+      <div class="settings-grid">
+        <fieldset>
+          <legend>Audio</legend>
+          <label>Music <input type="range" id="set-music" min="0" max="1" step="0.05"></label>
+          <label>Effects <input type="range" id="set-effects" min="0" max="1" step="0.05"></label>
+          <label>Ambience <input type="range" id="set-ambience" min="0" max="1" step="0.05"></label>
+          <label>Voice cues <input type="range" id="set-voice" min="0" max="1" step="0.05"></label>
+          <label class="check"><input type="checkbox" id="set-muted"> Mute all</label>
+        </fieldset>
+        <fieldset>
+          <legend>Graphics</legend>
+          <label>Quality tier
+            <select id="set-tier">
+              <option value="auto">Auto</option><option value="low">Low</option>
+              <option value="medium">Medium</option><option value="high">High</option>
+            </select>
+          </label>
+          <label>Camera
+            <select id="set-camera">
+              <option value="default">Default</option><option value="close">Close</option><option value="wide">Wide</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="set-reduced-motion"> Reduced motion</label>
+        </fieldset>
+        <fieldset>
+          <legend>Accessibility</legend>
+          <label>Color palette
+            <select id="set-palette">
+              <option value="default">Default</option>
+              <option value="cvd">Color-vision safe</option>
+              <option value="contrast">High contrast</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="set-high-contrast"> High contrast UI</label>
+          <label class="check"><input type="checkbox" id="set-large-text"> Larger text</label>
+          <label class="check"><input type="checkbox" id="set-left-handed"> Left-handed controls</label>
+          <label class="check"><input type="checkbox" id="set-hold-select"> Hold to select (vs toggle)</label>
+          <label class="check"><input type="checkbox" id="set-timing-assist"> Timing assist (+50% time)</label>
+          <label class="check"><input type="checkbox" id="set-haptics"> Haptics</label>
+          <button class="text-btn" data-action="replay-tutorial">Replay tutorial</button>
+        </fieldset>
+        <fieldset>
+          <legend>Controls</legend>
+          <div id="bindings-list"></div>
+          <p class="rail-note">Keyboard and gamepad bindings. Touch uses the on-screen controls.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Privacy</legend>
+          <label class="check"><input type="checkbox" id="set-telemetry"> Allow anonymous usage statistics</label>
+        </fieldset>
+      </div>
+      <div class="row"><button class="menu-btn primary" data-action="close-overlay">Done</button></div>
+    </div>
+  </section>
+
+  <!-- ============================== HELP =============================== -->
+  <section id="screen-help" class="screen overlay" role="dialog" aria-modal="true" aria-labelledby="help-heading" hidden>
+    <div class="panel wide">
+      <h2 id="help-heading">How to play</h2>
+      <div id="help-cards" class="card-grid"></div>
+      <div class="row"><button class="menu-btn primary" data-action="close-overlay">Done</button></div>
+    </div>
+  </section>
+
+  <!-- ============================= SCORES ============================== -->
+  <section id="screen-scores" class="screen" aria-labelledby="scores-heading" hidden>
+    <h2 id="scores-heading">Scores &amp; Friends</h2>
+    <div class="row">
+      <label>Board <select id="scores-board-select"></select></label>
+      <label class="check"><input type="checkbox" id="scores-friends"> Friends only</label>
+    </div>
+    <p id="scores-casual-note" class="rail-note" hidden>Casual board — authoritative validation unavailable offline.</p>
+    <table class="score-table" aria-label="Leaderboard">
+      <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Seed</th><th>Duration</th></tr></thead>
+      <tbody id="scores-rows"></tbody>
+    </table>
+    <button class="text-btn" data-action="home">← Back to title</button>
+  </section>
+
+  <!-- ============================= PROFILE ============================= -->
+  <section id="screen-profile" class="screen" aria-labelledby="profile-heading" hidden>
+    <h2 id="profile-heading">Profile &amp; Progress</h2>
+    <div id="profile-body"></div>
+    <h3>Achievements</h3>
+    <ul id="achievement-list" class="achievement-list"></ul>
+    <h3>Mastery track</h3>
+    <div id="journey-grid" class="journey-grid" role="list"></div>
+    <button class="text-btn" data-action="home">← Back to title</button>
+  </section>
+
+</main>
+
+<div id="live-region" class="sr-only" aria-live="polite"></div>
+<div id="alert-region" class="sr-only" aria-live="assertive"></div>
+<div id="toast-root" aria-hidden="true"></div>
+
+<div id="compat-message" hidden role="alert">
+  <div class="panel">
+    <h2>3D unavailable</h2>
+    <p>Spectrum Orbs needs WebGL for its gallery view. Your session and progress are saved.
+    You can still play using the accessible board list below, or try a browser with WebGL enabled.</p>
+    <button class="menu-btn" data-action="dismiss-compat">Continue in accessible mode</button>
+  </div>
+</div>
+
+<noscript><p>Spectrum Orbs requires JavaScript to run.</p></noscript>
+<script src="js/rng.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/content.js"></script>
+<script src="js/session.js"></script>
+<script src="js/platform.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
