@@ -1,15 +1,34 @@
 /**
- * audio.js — original synthesized audio. No samples, no copied assets.
+ * audio.js — original synthesized audio plus authored one-shot samples.
  *
  * Buses: music / effects / ambience / voice -> master. Independent sliders,
  * captions are surfaced by the UI (no audio-only gameplay). Event sounds are
  * short synthesized transients tied to logical events; pitch variants come
- * from the session's seeded audio stream for replay consistency.
+ * from the session's seeded audio stream for replay consistency. Where an
+ * authored sample exists (sfx/<name>.opus, see sfx/manifest.json) it is
+ * lazy-fetched after the user-gesture unlock and played through the effects
+ * bus; synthesis remains the fallback while loading or on failure.
  *
  * Hierarchy (spec §4): acknowledgment < legal move < goal < round completion.
  */
 (function (root) {
   'use strict';
+
+  /** Logical event -> authored one-shot basename in sfx/ (manifest.json). */
+  const EVENT_SAMPLES = {
+    ui: 'ui-click',
+    focus: 'ui-focus',
+    pick: 'orb-pick',
+    drop: 'orb-drop',
+    stack: 'orb-stack',
+    invalid: 'invalid-buzz',
+    'tube-complete': 'tube-complete',
+    win: 'round-win',
+    lose: 'round-lose',
+    undo: 'undo-swoosh',
+    hint: 'hint-chime',
+    tick: 'timer-tick',
+  };
 
   class AudioEngine {
     constructor() {
@@ -21,6 +40,7 @@
       this._ambience = null;
       this._music = null;
       this._started = false;
+      this._sampleCache = new Map(); // basename -> { buffer: AudioBuffer|null }
     }
 
     /** Must be called from a user gesture. Safe to call repeatedly. */
@@ -85,9 +105,40 @@
       src.start(t);
     }
 
+    /**
+     * Lazy-fetch and decode an authored sample into the cache. Only ever
+     * called after the user-gesture unlock; failures keep synthesis live.
+     */
+    _loadSample(name) {
+      if (!this._started || this._sampleCache.has(name)) return; // no duplicate fetches
+      const entry = { buffer: null };
+      this._sampleCache.set(name, entry);
+      fetch('sfx/' + name + '.opus')
+        .then((r) => { if (!r.ok) throw new Error('http-' + r.status); return r.arrayBuffer(); })
+        .then((ab) => this.ctx.decodeAudioData(ab))
+        .then((buf) => { entry.buffer = buf; })
+        .catch(() => { /* keep entry cached as failed: synthesis stays the fallback */ });
+    }
+
+    /** Play a cached sample through the given bus. False while loading/failed. */
+    _playSample(name, bus) {
+      const entry = this._sampleCache.get(name);
+      if (entry && entry.buffer) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = entry.buffer;
+        src.connect(this.buses[bus] || this.buses.effects);
+        src.start();
+        return true;
+      }
+      this._loadSample(name);
+      return false;
+    }
+
     /** Map logical game events to sound (tiered per spec §4). */
     event(name, opts) {
       if (!this._started) return;
+      const sample = EVENT_SAMPLES[name];
+      if (sample && this._playSample(sample, name === 'hint' ? 'voice' : 'effects')) return;
       switch (name) {
         case 'ui': this._blip('effects', 660, 0.07, 'triangle', 0.15); break;
         case 'focus': this._blip('effects', 440, 0.04, 'sine', 0.06); break;

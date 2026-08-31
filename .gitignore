@@ -2,3 +2,5 @@ node_modules/
 .local-data/
 *.log
 .DS_Store
+test-results/
+.tmp-build/

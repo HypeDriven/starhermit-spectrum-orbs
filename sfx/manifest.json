@@ -1,0 +1,74 @@
+[
+  {
+    "name": "ui-click",
+    "seconds": 1,
+    "prompt": "Short soft UI button tap, a gentle plastic click with a warm rounded attack, dry and close, no reverb tail.",
+    "event": "event:ui"
+  },
+  {
+    "name": "ui-focus",
+    "seconds": 1,
+    "prompt": "Very quiet hover tick, a faint fingernail tap on a wooden surface, extremely short and subtle.",
+    "event": "event:focus"
+  },
+  {
+    "name": "orb-pick",
+    "seconds": 1,
+    "prompt": "A small glass marble being lifted out of a glass tube, delicate clink with a slight upward suction slide, bright and clean.",
+    "event": "event:pick"
+  },
+  {
+    "name": "orb-drop",
+    "seconds": 1,
+    "prompt": "A glass marble dropping into a tall glass tube and landing with a resonant clink, brief glassy ring decaying quickly.",
+    "event": "event:drop"
+  },
+  {
+    "name": "orb-stack",
+    "seconds": 1,
+    "prompt": "A glass marble clacking firmly onto another matching glass marble, crisp ceramic-on-glass knock with a satisfying snap.",
+    "event": "event:stack"
+  },
+  {
+    "name": "invalid-buzz",
+    "seconds": 1,
+    "prompt": "Soft muted error thunk, a low dull knock on padded wood with a short downward pitch bend, gentle and non-harsh.",
+    "event": "event:invalid"
+  },
+  {
+    "name": "tube-complete",
+    "seconds": 2,
+    "prompt": "Small ascending chime arpeggio of three glass bell notes, sparkling and delicate, celebrating a finished tube.",
+    "event": "event:tube-complete"
+  },
+  {
+    "name": "round-win",
+    "seconds": 3,
+    "prompt": "Bright celebratory flourish of tuned glass chimes and a gentle shimmer of small bells, rising major-key cascade with a soft glitter tail.",
+    "event": "event:win"
+  },
+  {
+    "name": "round-lose",
+    "seconds": 2,
+    "prompt": "Three soft descending wooden mallet tones, mellow marimba-like fall, subdued and sympathetic rather than punishing.",
+    "event": "event:lose"
+  },
+  {
+    "name": "undo-swoosh",
+    "seconds": 1,
+    "prompt": "Quick airy reverse whoosh, a short cloth swipe sucked backward, light and fast with a soft end.",
+    "event": "event:undo"
+  },
+  {
+    "name": "hint-chime",
+    "seconds": 1,
+    "prompt": "Gentle high bell ping, a single pure metal chime tone with a soft mallet strike and a short shimmering decay.",
+    "event": "event:hint"
+  },
+  {
+    "name": "timer-tick",
+    "seconds": 1,
+    "prompt": "Single precise clock tick, a small mechanical snap like a watch escapement, very short and dry.",
+    "event": "event:tick"
+  }
+]
