@@ -29,6 +29,8 @@ html, body {
   overscroll-behavior: none;
 }
 
+body { display: flex; flex-direction: column; }
+
 body.large-text { font-size: 19px; }
 body.high-contrast {
   --bg: #000; --panel: #0a0a0a; --panel-2: #141414;
@@ -48,7 +50,7 @@ body.left-handed .rail#rail-right { order: -1; }
 
 /* ---------------------------------------------------------- top bar -- */
 #topbar {
-  position: sticky; top: 0; z-index: 40;
+  position: sticky; top: 0; z-index: 40; flex: none;
   background: color-mix(in srgb, var(--bg) 85%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
@@ -78,7 +80,7 @@ body.left-handed .rail#rail-right { order: -1; }
 }
 
 /* ----------------------------------------------------------- screens -- */
-#app { height: calc(100dvh - 61px); position: relative; }
+#app { flex: 1; min-height: 0; position: relative; }
 .screen {
   position: absolute; inset: 0; overflow-y: auto;
   padding: 24px 16px calc(24px + var(--sab));
@@ -104,6 +106,8 @@ body.left-handed .rail#rail-right { order: -1; }
 .menu-btn.primary:hover, .menu-btn.primary:focus-visible { filter: brightness(1.12); }
 .menu-btn.danger { border-color: var(--danger); color: var(--danger); }
 .menu-sub { display: block; font-size: 0.8rem; opacity: 0.75; }
+.menu-item { display: flex; flex-direction: column; gap: 2px; }
+.menu-item .menu-sub { text-align: center; }
 .title-foot { text-align: center; color: var(--ink-dim); font-size: 0.85rem; }
 
 .card-grid {
@@ -317,6 +321,12 @@ select {
   .game-screen.rail-left-open #rail-left { transform: none; }
   .game-screen.rail-right-open #rail-right { transform: none; }
   .drawer-toggle { display: block; }
+}
+
+/* Narrow viewports: let the top bar wrap instead of overflowing */
+@media (max-width: 700px) {
+  .topbar-inner { flex-wrap: wrap; row-gap: 4px; padding-top: 6px; padding-bottom: 6px; }
+  .topbar-status { flex-wrap: wrap; gap: 6px 10px; justify-content: flex-end; }
 }
 
 /* Portrait mobile: bottom thumb-zone tray */
