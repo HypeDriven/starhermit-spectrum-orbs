@@ -18,6 +18,11 @@
   const SETTINGS_VERSION = 2;
   const PROGRESSION_VERSION = 1;
 
+  // The StarHermit platform serves exactly one API route: GET /api/v1/time.
+  // Every other /api/v1/* route 404s in production, so nothing outside this
+  // set may ever be requested — hosted features degrade to local no-ops.
+  const GUARANTEED_ROUTES = new Set(['/api/v1/time']);
+
   const DEFAULT_SETTINGS = {
     version: SETTINGS_VERSION,
     audio: { music: 0.6, effects: 0.8, ambience: 0.5, voice: 0.8, muted: false },
@@ -86,25 +91,31 @@
             if (data.profile) this.profile = data.profile;
           }
         }
-        this.hosted = window.location.protocol.startsWith('http');
         this.storageKey = this.gameScope + ':v1';
       } catch (e) { /* malformed token: stay standalone */ }
     }
 
-    /** Synchronize with platform time (round-trip adjusted). */
+    /**
+     * Single startup probe of the one route the platform guarantees
+     * (GET /api/v1/time). A valid response flips `hosted` on; any failure
+     * leaves every hosted feature in its local no-op mode.
+     */
     async syncTime() {
-      if (!this.isBrowser || !this.hosted) return false;
+      if (!this.isBrowser) return false;
+      if (!window.location.protocol.startsWith('http')) return false;
       try {
         const t0 = Date.now();
-        const res = await fetch('/api/v1/time', { headers: this._headers() });
+        const res = await fetch('/api/v1/time', { headers: this._headers(), cache: 'no-store' });
         const t1 = Date.now();
-        if (!res.ok) return false;
+        if (!res.ok) { this.hosted = false; return false; }
         const data = await res.json();
-        const rttMid = t0 + (t1 - t0) / 2;
-        this._timeOffset = data.now - rttMid;
+        const serverMs = Number(data.now !== undefined ? data.now : (data.serverTime !== undefined ? data.serverTime : data.epochMs));
+        if (!Number.isFinite(serverMs)) { this.hosted = false; return false; }
+        this._timeOffset = serverMs - (t0 + (t1 - t0) / 2);
         this._timeSynced = true;
+        this.hosted = true;
         return true;
-      } catch (e) { return false; }
+      } catch (e) { this.hosted = false; return false; }
     }
 
     /** Authoritative now (platform-adjusted when available). */
@@ -121,7 +132,10 @@
 
     /** Fetch wrapper: structured errors and rate limits become recoverable UI states. */
     async api(path, opts) {
-      if (!this.hosted) throw Object.assign(new Error('offline'), { code: 'offline' });
+      const route = String(path).split('?')[0];
+      if (!this.hosted || !GUARANTEED_ROUTES.has(route)) {
+        throw Object.assign(new Error('offline'), { code: 'offline' });
+      }
       const res = await fetch(path, Object.assign({ headers: this._headers() }, opts || {}));
       if (res.status === 429) {
         const retry = parseInt(res.headers.get('Retry-After') || '5', 10);
@@ -277,7 +291,7 @@
     // ---------------------------------------------------- presence/activity --
 
     activityStart() {
-      if (this._activityStarted || !this.hosted) return;
+      if (this._activityStarted || !this.hosted || !GUARANTEED_ROUTES.has('/api/v1/activity/start')) return;
       this._activityStarted = true;
       this.api('/api/v1/activity/start', { method: 'POST', body: JSON.stringify({ game: this.gameScope }) }).catch(() => {});
     }
@@ -291,7 +305,7 @@
       this.api('/api/v1/activity/end', { method: 'POST', body }).catch(() => {});
     }
     heartbeatStart() {
-      if (!this.hosted || this._heartbeatTimer) return;
+      if (!this.hosted || !GUARANTEED_ROUTES.has('/api/v1/presence') || this._heartbeatTimer) return;
       this._heartbeatTimer = setInterval(() => {
         this.api('/api/v1/presence', { method: 'POST', body: JSON.stringify({ game: this.gameScope }) }).catch(() => {});
       }, 30000);
@@ -318,7 +332,7 @@
     flushTelemetry() {
       if (!this._telemetryQueue.length) return;
       const batch = this._telemetryQueue.splice(0);
-      if (!this.hosted) return;
+      if (!this.hosted || !GUARANTEED_ROUTES.has('/api/v1/telemetry')) return;
       this.api('/api/v1/telemetry', { method: 'POST', body: JSON.stringify({ game: this.gameScope, events: batch }) })
         .catch(() => { /* dropped: analytics must never break play */ });
     }
