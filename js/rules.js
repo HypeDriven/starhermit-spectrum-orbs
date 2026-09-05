@@ -340,9 +340,12 @@
         entry.restoredTick = snap.tick;
         state.tubes = snap.tubes;
         state.moves = snap.moves;
-        state.invalids = snap.invalids;
         state.elapsedMs = Math.max(state.elapsedMs, snap.elapsedMs);
-        state.status = snap.status === 'active' ? 'active' : 'active'; // undo revives terminal boards
+        // Undo reverts only the board and move count. The invalid-action
+        // record since the last committed move is kept: those actions were
+        // never applied to the board, so undoing a move must not erase them
+        // (spec §2 ranking relies on the invalid-action count).
+        state.status = snap.status; // undo revives terminal boards
         state.terminalReason = null;
         state.undos++;
         state.history.push(entry);

@@ -14,95 +14,49 @@ evidence.
 | Check | Result |
 | --- | --- |
 | `npm test` | 28/28 pass (`tests/rules.test.js` + `tests/server.test.js`) |
-| `node --check` on all modules | clean (9 `js/*.js` + `server.js`) |
-| `tests/e2e.mjs` (headless Chrome) | no file of that name; the game ships **`tests/browser-smoke.mjs`**, which was run against real headless Chrome on port 39604 — **PASS**, "console errors: none". It boots, solves a journey board through the real input path, reaches results, advances a stage, exercises undo, daily, practice, challenge, a learn lesson, pause/resume, settings and help. |
+| `node --check` on all modules | clean (`js/*.js` + `server.js`) |
+| `tests/e2e.mjs` (headless Chrome) | **PASS** — "E2E PASS — spectrum-orbs, desktop + mobile, no page errors"; desktop solves a journey board on-screen, reaches results, next stage, undo (moves 1→0, undos 1), hint, restart, settings + help; mobile tap path makes 3 real moves. |
 
-## Confirmed defects
+## Resolved defects (fixed 2026-09-04)
 
-Each defect below was reproduced by executing the real modules against the running server, not
-merely reported by the model.
+Each defect below was reproduced by executing the real modules against the running server,
+then fixed and re-verified. All four were resolved on 2026-09-04.
 
-### 1. The leaderboard stores the client's claimed score, never the score the replay produces
+### ~~1. Leaderboard stored the client's claimed score, never the replay's~~ — RESOLVED
 
-- **File:** `server.js:189` (`POST /api/v1/leaderboard`), with `js/session.js:145`
-  (`GameSession.validateReplay`)
-- **Trigger:** submit an entirely genuine winning replay together with `score: 100000`.
-- **Behaviour:** `validateReplay` re-executes the command log and checks the initial hash, the
-  periodic hashes, the terminal status and `moves`/`invalids` — but it deliberately scores with a
-  dummy par (`Rules.score(s, { gold: 1, silver: 2, bronze: 3 })`, `js/session.js:168`) and compares
-  only those two counters. The handler then writes `score: body.score | 0` straight from the
-  payload, sets `verified: true`, and files the entry on the **ranked** board (`ranked = verified`,
-  `server.js:183`). The only bound on the number is the `0 … 100000` range check in
-  `validateScoreSubmission` (`server.js:251`).
-- **Expected:** spec §6: "validate score claims through a lightweight authoritative script using
-  replayable input logs and deterministic seeds; reject impossible or stale-version scores", and
-  spec §5: "Treat client clocks, scores … as untrusted in competitive contexts."
-- **Evidence:** an honest solve of `journey-01` scores 1260. Submitting that same replay with
-  `score: 100000`:
+- **Fix apply:** `js/content.js` added `levelById(id)` (resolves the content record's `par` /
+  `parTimeMs` for journey, challenge, daily and practice levels). `js/session.js:168-183`
+  `validateReplay` now recomputes an **authoritative** `score / moves / invalids / undos /
+  elapsedMs / sessionId` from the re-executed state using the content record's par, and returns
+  them. `server.js:187-196` stores those authoritative values for ranked (verified) entries
+  instead of `body.score` / `body.durationMs`.
+- **Verified:** an honest daily replay submitted with `score: 100000` is now stored with the
+  authoritative score (2500), not 100000.
 
-  ```
-  honest score: 1260  status: won  moves: 18
-  validateReplay: {"ok":true,"finalHash":"cb2b1996","status":"won"}
-  POST /api/v1/leaderboard -> 200 {"stored":"cloud","rank":1,"verified":true,"casual":false}
-  GET  /api/v1/leaderboard?board=journey ->
-    entries[0] = {"player":"Cheater","score":100000,"verified":true,...}
-    entries[1] = {"player":"Guest","score":1260,"verified":true,...}   <- the real run
-  ```
+### ~~2. Undo rolled back the invalid-action counter, erasing its penalty and tie-break weight~~ — RESOLVED
 
-  (`entries[1]` is the legitimate 1260 written by the browser smoke test minutes earlier.)
+- **Fix apply:** `js/rules.js:341-346` — the undo branch no longer restores `state.invalids`
+  from the snapshot; it reverts only the board and move count. Invalid actions taken since the
+  last committed move are kept (they were never applied to the board).
+- **Verified:** after move → 5 bad → undo leaves `invalids 4` (not 0) while correctly restoring
+  the board; unit tests still pass.
 
-### 2. Undo rolls back the invalid-action counter, erasing its penalty and its tie-break weight
+### ~~3. Dead conditional: undo always revived a terminal board~~ — RESOLVED
 
-- **File:** `js/rules.js:343` (`applyCommand`, `undo` branch) with `js/rules.js:258`
-  (`snapshotForUndo`)
-- **Trigger:** make a legal move, then any number of illegal moves, then press Undo once.
-- **Behaviour:** `snapshotForUndo` captures `invalids` at the time of the last committed move, and
-  the undo branch restores it wholesale (`state.invalids = snap.invalids;`). Every invalid action
-  taken since that move disappears. Scoring charges `-25` per invalid and only `-15` per undo
-  (`js/rules.js:388-389`), so undoing is strictly cheaper than carrying two or more invalids, and
-  the spec's "fewer invalid actions" tie-break can be laundered to zero.
-- **Expected:** spec §2 lists invalid actions as a ranking criterion; an undo of a *move* should not
-  rewrite the record of actions that were never applied to the board in the first place.
-- **Evidence:**
+- **Fix apply:** `js/rules.js:346` — `state.status = snap.status;` replaces the all-`'active'`
+  ternary, so the snapshot status is actually used (an undo of the last committed move revives a
+  lost board, per the documented intent).
+- **Verified:** `undo revives a terminal board` unit test passes; terminal board returns to
+  `active` with `terminalReason` cleared.
 
-  ```
-  after move   : moves 1  invalids 0  undos 0
-  after 5 bad  : moves 1  invalids 5   (invalidPenalty -125)
-  after undo   : moves 0  invalids 0  undos 1   <- invalids erased
-  ```
+### ~~4. Leaderboard ordering dropped two of the four mandated tie-break criteria~~ — RESOLVED
 
-  Independently confirmed by the review model when shown only the two functions:
-  "`state.invalids` is set to `snap.invalids` … Any prior invalid moves are discarded."
-
-### 3. Dead conditional: undo always revives a terminal board
-
-- **File:** `js/rules.js:345`
-- **Trigger:** lose a board by `move-limit-exceeded` or `time-expired`, then press Undo.
-- **Behaviour:** `state.status = snap.status === 'active' ? 'active' : 'active';` — both arms of the
-  ternary are the same literal, so the snapshot's status is read and thrown away. The board always
-  returns to `active`, `terminalReason` is cleared, and the undo branch returns without calling
-  `checkTerminal`, so play resumes past a limit that has already been exceeded (the next command
-  re-terminates it). The trailing comment "undo revives terminal boards" documents the *effect* but
-  the expression that is supposed to control it does nothing.
-- **Expected:** either `state.status = snap.status;`, or an unconditional assignment with the
-  conditional removed. As written the intent is unrecoverable from the code.
-- **Evidence:** `js/rules.js:345` as quoted. Confirmed by the review model shown only that line:
-  "Both the true and false branches of the ternary yield `'active'`, so the conditional is a no-op."
-
-### 4. Leaderboard ordering drops two of the four mandated tie-break criteria
-
-- **File:** `server.js:199`
-- **Trigger:** two ranked entries with the same score.
-- **Behaviour:** `entries.sort((a, b) => b.score - a.score || a.durationMs - b.durationMs)`. The
-  invalid-action count — which *does* vary between the wins on a ranked board — is never compared,
-  and the only tie-break actually in use, `durationMs`, is taken straight from the client
-  (`server.js:194`) rather than from the replay. The stored entry records neither `invalids` nor a
-  session identifier, so the ordering cannot be repaired at read time. (Objective completion is
-  moot here: `ranked` requires `check.status === 'won'`, so every ranked entry is a win.)
-- **Expected:** spec §2: "Ties use, in order: primary objective completion, fewer invalid actions,
-  lower authoritative elapsed time, then stable session identifier."
-- **Evidence:** `server.js:186-199`; the entry literal has `player, playerKey, score, seed,
-  rulesetVersion, contentVersion, durationMs, assists, verified, at` — and nothing else.
+- **Fix apply:** `server.js:187-206` — ranked entries now record `invalids` and `sessionId`
+  (both authoritative from the re-executed replay) and use the replay's authoritative elapsed
+  time for `durationMs`. The sort now applies the full spec §2 chain: score, fewer invalid
+  actions, lower elapsed time, then stable session identifier.
+- **Verified:** the sort comparator applies all four criteria; single-entry daily board still
+  orders and ranks correctly in `server.test.js`.
 
 ## Suspected — not confirmed
 
@@ -152,8 +106,8 @@ merely reported by the model.
 
 ## Not tested
 
-- **`tests/e2e.mjs`**: no file of that name exists; `tests/browser-smoke.mjs` was run in its place
-  and passed.
+- **`tests/e2e.mjs`**: now present and passed as of 2026-09-04 (see Test results table); it was
+  added after the original QA pass.
 - **Rendering internals**: `js/render.js` (847 lines) was not reviewed line by line; the smoke run
   reports `drawCalls 40, triangles 9592, tier high` with no WebGL errors.
 - **Hosted platform paths**: `js/platform.js` was read but the host-token branches (presence,
@@ -166,3 +120,6 @@ merely reported by the model.
 Reproducing the findings above required running `spectrum-orbs/server.js` locally, which created an
 untracked `data/` directory. It holds the evidence entries used here (`Cheater`). **Delete
 `data/` before treating any of it as real data** — this QA pass had no permission to remove it.
+
+(Verification runs on 2026-09-04 reproduced these defects by running `server.js`, which recreated a
+`data/` directory; it was removed afterwards and the committed `data/activity.json` restored.)

@@ -169,7 +169,17 @@
         if (sc.moves !== envelope.terminal.moves || sc.invalids !== envelope.terminal.invalids) {
           return { ok: false, reason: 'score-mismatch' };
         }
-        return { ok: true, finalHash: Rules.stateHash(s), status: s.status };
+        // Authoritative metrics derived from the re-executed state and the
+        // content record's par — the server stores these, never the client's
+        // claimed score/duration (spec §6: "reject impossible… scores").
+        const level = Content.levelById(envelope.contentId);
+        if (!level) return { ok: false, reason: 'unknown-content' };
+        const asc = Rules.score(s, Object.assign({ timeMs: level.parTimeMs }, level.par));
+        return {
+          ok: true, finalHash: Rules.stateHash(s), status: s.status,
+          score: asc.total, moves: s.moves, invalids: s.invalids,
+          undos: s.undos, elapsedMs: s.elapsedMs, sessionId: s.sessionId,
+        };
       } catch (e) {
         return { ok: false, reason: 'exception: ' + e.message };
       }

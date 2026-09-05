@@ -171,10 +171,11 @@ const routes = {
     if (err) return send(res, 400, { error: err });
 
     let verified = false;
+    let check = null;
     if (body.replay) {
       // Replay validation is authoritative: re-executing the input log proves
       // the claim. No separate plausibility gate needed.
-      const check = GameSession.validateReplay(body.replay);
+      check = GameSession.validateReplay(body.replay);
       verified = check.ok && check.status === 'won';
       if (!check.ok) {
         return send(res, 400, { error: 'replay-invalid:' + check.reason });
@@ -187,17 +188,27 @@ const routes = {
     const entry = {
       player: String(body.player || 'Guest').slice(0, 32),
       playerKey: playerKey(req, body),
-      score: body.score | 0,
+      // Authoritative values for verified (ranked) claims come from the
+      // re-executed replay, never the client payload (spec §6). Casual
+      // submissions have no replay, so their client values are stored as-is.
+      score: ranked ? check.score : (body.score | 0),
       seed: body.seed | 0,
       rulesetVersion: body.rulesetVersion | 0,
       contentVersion: body.contentVersion | 0,
-      durationMs: body.durationMs | 0,
+      durationMs: ranked ? check.elapsedMs : (body.durationMs | 0),
+      invalids: ranked ? check.invalids : 0,
+      sessionId: ranked ? String(check.sessionId) : '',
       assists: body.assists || {},
       verified: ranked,
       at: Date.now(),
     };
     entries.push(entry);
-    entries.sort((a, b) => b.score - a.score || a.durationMs - b.durationMs);
+    // Order by score, then the spec §2 tie-break: fewer invalid actions,
+    // lower authoritative elapsed time, then stable session identifier.
+    entries.sort((a, b) => b.score - a.score
+      || (a.invalids || 0) - (b.invalids || 0)
+      || a.durationMs - b.durationMs
+      || String(a.sessionId || '').localeCompare(String(b.sessionId || '')));
     writeJson('board:' + storeBoard, entries.slice(0, 200));
     const rank = entries.indexOf(entry) + 1;
     send(res, 200, { stored: 'cloud', rank, verified: ranked, casual: !ranked });

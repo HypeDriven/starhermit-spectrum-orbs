@@ -385,11 +385,29 @@
     return report;
   }
 
+  /**
+   * Resolve a level by its id across the shipped catalogue and the derived
+   * daily/practice boards. Returns the level object (with `par`, `parTimeMs`
+   * used for authoritative scoring) or null. Used by replay validation so the
+   * server scores a verified claim from the content record, never from the
+   * client payload.
+   */
+  function levelById(id) {
+    if (!id) return null;
+    for (const lv of JOURNEY) if (lv.id === id) return lv;
+    for (const lv of CHALLENGES) if (lv.id === id) return lv;
+    const daily = /^daily-(\d{4}-\d{2}-\d{2})$/.exec(id);
+    if (daily) return dailyForDate(daily[1]);
+    const practice = /^practice-([a-z]+)-(\d+)$/.exec(id);
+    if (practice) return practiceLevel(practice[1], Number(practice[2]));
+    return null;
+  }
+
   return {
     CONTENT_VERSION, BUILD_VERSION,
     COLOR_DEFS, palette, THEMES,
     JOURNEY, CHALLENGES, PRACTICE, practiceLevel,
     dailyForDate, TUTORIAL, ACHIEVEMENTS,
-    validateLevel, validateCatalogue,
+    validateLevel, validateCatalogue, levelById,
   };
 });

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test tests/rules.test.js tests/server.test.js",
+    "test:e2e": "node tests/e2e.mjs",
     "check": "node --check server.js && node --check js/rng.js && node --check js/rules.js && node --check js/content.js && node --check js/session.js && node --check js/platform.js && node --check js/audio.js && node --check js/ui.js"
   }
 }
