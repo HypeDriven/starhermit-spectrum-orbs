@@ -21,11 +21,8 @@ let dataDir;
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-test-'));
   serverProc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: Object.assign({}, process.env, { PORT: '0', HOME: dataDir }),
+    env: Object.assign({}, process.env, { PORT: '0', SPECTRUM_ORBS_DATA_DIR: dataDir }),
   });
-  // server.js writes data next to itself; use a scratch copy? No: it uses
-  // __dirname/data. To keep the repo clean during tests we point PORT only
-  // and accept the local data dir, cleaning up after.
   base = await new Promise((resolve, reject) => {
     let buf = '';
     serverProc.stdout.on('data', (d) => {
@@ -41,7 +38,6 @@ test.before(async () => {
 test.after(() => {
   if (serverProc) serverProc.kill('SIGKILL');
   fs.rmSync(dataDir, { recursive: true, force: true });
-  fs.rmSync(path.join(__dirname, '..', 'data'), { recursive: true, force: true });
 });
 
 function solveDaily(date) {
@@ -148,6 +144,71 @@ test('save rejects bad checksums and forbidden fields', async () => {
     body: JSON.stringify({ doc: { version: 1, checksum: 'deadbeef', token: 'x' } }),
   });
   assert.equal(bad.status, 400);
+});
+
+test('replay validation rejects forged board geometry (config-mismatch)', async () => {
+  const date = '2026-08-20';
+  const s = solveDaily(date);
+  const env = s.replayEnvelope();
+  // Forged: claim the daily content id but rebuild from an easier board.
+  const forged = JSON.parse(JSON.stringify(env));
+  forged.config.colors = 2;
+  forged.config.tubeCount = 4;
+  const direct = GameSession.validateReplay(forged);
+  assert.equal(direct.ok, false);
+  assert.equal(direct.reason, 'config-mismatch');
+  // A forged seed is rejected too.
+  const forgedSeed = JSON.parse(JSON.stringify(env));
+  forgedSeed.seed = 12345;
+  assert.equal(GameSession.validateReplay(forgedSeed).reason, 'config-mismatch');
+  // Forged limits (a phantom generous clock) are rejected.
+  const forgedLimits = JSON.parse(JSON.stringify(env));
+  forgedLimits.config.limits = { moves: null, timeMs: 999999, undo: true };
+  assert.equal(GameSession.validateReplay(forgedLimits).reason, 'config-mismatch');
+  // End-to-end: the forged envelope never reaches the ranked board.
+  const res = await fetch(base + '/api/v1/leaderboard', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      board: 'daily:' + date, score: 5000,
+      rulesetVersion: Rules.RULESET_VERSION, contentVersion: Content.CONTENT_VERSION,
+      seed: forged.seed, assists: {}, durationMs: 1000, sessionId: 'x',
+      replay: forged, player: 'Forger',
+    }),
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /config-mismatch/);
+});
+
+test('timing-assist widened time limit still validates (declared assist)', () => {
+  const lv = Content.levelById('challenge-speed');
+  assert.ok(lv.limits && lv.limits.timeMs);
+  const assisted = Object.assign({}, lv, { limits: { timeMs: Math.floor(lv.limits.timeMs * 1.5) } });
+  const s = new GameSession(assisted, { mode: 'challenge' });
+  const sol = Rules.solve(s.state, { maxNodes: 400000 });
+  assert.ok(sol, 'challenge-speed must be solvable');
+  for (const m of sol) assert.ok(s.move(m.from, m.to).accepted);
+  assert.equal(s.state.status, 'won');
+  const check = GameSession.validateReplay(s.replayEnvelope());
+  assert.equal(check.ok, true, 'assisted replay must validate: ' + check.reason);
+});
+
+test('snapshot restore carries the authoritative clock forward', () => {
+  let t = 1000000;
+  const now = () => t;
+  const lv = Content.dailyForDate('2026-08-21');
+  const s = new GameSession(lv, { mode: 'daily', now });
+  const first = Rules.legalActions(s.state)[0];
+  assert.ok(s.move(first.from, first.to).accepted);
+  t += 30000; // 30s of play with no command since the last move
+  const snap = s.snapshot();
+  const r = GameSession.restore(snap, { now });
+  assert.ok(r.elapsedMs() >= 30000, 'elapsed must not rewind across restore, got ' + r.elapsedMs());
+  t += 5000;
+  assert.ok(r.elapsedMs() >= 35000);
+  // The engine clock stays monotonic on the next command after restore.
+  const next = Rules.legalActions(r.state)[0];
+  assert.ok(r.move(next.from, next.to).accepted);
+  assert.ok(r.state.elapsedMs >= 35000, 'state clock must not rewind, got ' + r.state.elapsedMs);
 });
 
 test('oversized payloads are refused', async () => {

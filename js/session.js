@@ -39,6 +39,7 @@
       this.startedAt = this._now();
       this._pauseStart = null;       // non-null while paused
       this._pausedTotal = 0;
+      this._carriedMs = 0;           // elapsed time baked in by a snapshot restore
       this.finished = false;
       this.terminalResult = null;
       this.listeners = new Set();
@@ -50,7 +51,7 @@
     /** Authoritative elapsed ms, excluding paused time. */
     elapsedMs() {
       const end = this._pauseStart !== null ? this._pauseStart : this._now();
-      return Math.max(0, Math.floor(end - this.startedAt - this._pausedTotal));
+      return Math.max(0, Math.floor(this._carriedMs + end - this.startedAt - this._pausedTotal));
     }
 
     pause() {
@@ -145,6 +146,30 @@
     static validateReplay(envelope) {
       try {
         if (!envelope || envelope.schema !== REPLAY_SCHEMA) return { ok: false, reason: 'schema' };
+        // The board must be rebuilt from the content record's own parameters,
+        // never from client-supplied geometry (spec §6: untrusted claims).
+        // Otherwise a trivially easy forged board could be passed off as a
+        // hard journey/daily stage.
+        const level = Content.levelById(envelope.contentId);
+        if (!level) return { ok: false, reason: 'unknown-content' };
+        const cfg = envelope.config || {};
+        const normLimits = (l) => ({
+          moves: l && Number.isInteger(l.moves) ? l.moves : null,
+          timeMs: l && Number.isInteger(l.timeMs) ? l.timeMs : null,
+          undo: !l || l.undo !== false,
+        });
+        const want = normLimits(level.limits);
+        const got = normLimits(cfg.limits);
+        // The timing-assist accessibility option legitimately widens a time
+        // limit by 1.5x (main.js startLevel); it is declared in `assists`.
+        const timeOk = got.timeMs === want.timeMs ||
+          (want.timeMs !== null && got.timeMs === Math.floor(want.timeMs * 1.5));
+        if ((envelope.seed >>> 0) !== (level.seed >>> 0) ||
+            cfg.colors !== level.colors || cfg.tubeCount !== level.tubeCount ||
+            cfg.capacity !== level.capacity ||
+            got.moves !== want.moves || got.undo !== want.undo || !timeOk) {
+          return { ok: false, reason: 'config-mismatch' };
+        }
         let s = Rules.createState({
           contentId: envelope.contentId, seed: envelope.seed,
           colors: envelope.config.colors, tubeCount: envelope.config.tubeCount,
@@ -172,11 +197,9 @@
         // Authoritative metrics derived from the re-executed state and the
         // content record's par — the server stores these, never the client's
         // claimed score/duration (spec §6: "reject impossible… scores").
-        const level = Content.levelById(envelope.contentId);
-        if (!level) return { ok: false, reason: 'unknown-content' };
         const asc = Rules.score(s, Object.assign({ timeMs: level.parTimeMs }, level.par));
         return {
-          ok: true, finalHash: Rules.stateHash(s), status: s.status,
+          ok: true, finalHash: Rules.stateHash(s), status: s.status, timingAssist: got.timeMs !== want.timeMs,
           score: asc.total, moves: s.moves, invalids: s.invalids,
           undos: s.undos, elapsedMs: s.elapsedMs, sessionId: s.sessionId,
         };
@@ -187,9 +210,14 @@
 
     /** Serializable snapshot for "last safe local snapshot" / reconnect. */
     snapshot() {
+      const state = JSON.parse(Rules.serialize(this.state));
+      // Bake the live clock into the state so a restore carries the full
+      // authoritative elapsed time forward instead of restarting at zero
+      // (time limits and speed scoring must survive a reload).
+      state.elapsedMs = this.elapsedMs();
       return JSON.stringify({
         v: 1, level: this.level, mode: this.mode,
-        state: JSON.parse(Rules.serialize(this.state)),
+        state,
         commands: this.commands, hashes: this.hashes,
         startedAt: this.startedAt, pausedTotal: this._pausedTotal + (this._pauseStart !== null ? this._now() - this._pauseStart : 0),
         finished: this.finished,
@@ -204,8 +232,11 @@
       s.commands = d.commands || [];
       s.seenCommandIds = new Set(s.commands.map((c) => c.id));
       s.hashes = d.hashes || [{ tick: 0, hash: Rules.stateHash(s.state) }];
-      s.startedAt = s._now(); // clock restarts; paused total carried forward
-      s._pausedTotal = d.pausedTotal || 0;
+      // Clock restarts from the baked-in elapsed time; the old paused total
+      // is already accounted for inside state.elapsedMs.
+      s._carriedMs = s.state.elapsedMs || 0;
+      s.startedAt = s._now();
+      s._pausedTotal = 0;
       s.finished = !!d.finished;
       if (s.finished) s._finish();
       return s;

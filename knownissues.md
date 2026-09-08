@@ -60,15 +60,18 @@ then fixed and re-verified. All four were resolved on 2026-09-04.
 
 ## Suspected — not confirmed
 
-### 1. `validateReplay` rebuilds the board from client-supplied geometry
+### 1. ~~`validateReplay` rebuilds the board from client-supplied geometry~~ — RESOLVED 2026-09-08
 
-- **File:** `js/session.js:148-152`
-- **Concern:** the replay is re-created from `envelope.config.colors / tubeCount / capacity /
-  limits` and `envelope.seed`, none of which is checked against the authoritative content record
-  for `envelope.contentId`. A trivially easy board could be passed off as a hard journey stage.
-- **Why unconfirmed:** because defect 1 already makes the score arbitrary, the additional leverage
-  from a forged config could not be isolated, and `Rules.createState` does validate internal
-  consistency (`validateLayout`), so an outright impossible board is refused.
+- **Confirmed and fixed:** the replay was re-created from `envelope.config` and
+  `envelope.seed` with no check against the content record, so a trivially easy
+  forged board could be passed off as a hard stage. `js/session.js`
+  `validateReplay` now resolves the content record first and rejects
+  (`config-mismatch`) any envelope whose seed, colors, tubeCount, capacity, or
+  normalized limits do not match the record; the declared timing-assist 1.5x
+  time-limit widening remains accepted.
+- **Verified:** new tests in `tests/server.test.js` — forged config/seed/limits
+  rejected at the validator and over HTTP (400 `replay-invalid:config-mismatch`),
+  and a legitimately assisted `challenge-speed` replay still validates.
 
 ### 2. `efficiency` reads as an accidental sum of two par thresholds
 

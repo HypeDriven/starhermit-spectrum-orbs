@@ -644,7 +644,7 @@ class Game {
 
   doHint() {
     if (!this.canPlay()) return;
-    if (!this.level.mechanics.includes('hint')) { this.explainInvalid(0, 'undo-disabled'); return; }
+    if (!this.level.mechanics.includes('hint')) { this.explainInvalid(0, 'hint-disabled'); return; }
     const h = this.session.hint();
     if (!h) { this.ui.toast('No hint available.'); return; }
     this.renderer.setHint(h);

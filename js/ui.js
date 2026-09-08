@@ -18,6 +18,7 @@
     'target-full': 'That tube is full.',
     'color-mismatch': 'Colors must match — pour onto the same color or an empty tube.',
     'undo-disabled': 'Undo is disabled in this mode.',
+    'hint-disabled': 'Hints are not available in this mode.',
     'nothing-to-undo': 'Nothing to undo.',
     'duplicate-command': 'Already applied.',
   };

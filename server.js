@@ -26,7 +26,7 @@ const Content = require('./js/content.js');
 const { GameSession } = require('./js/session.js');
 
 const ROOT = __dirname;
-const DATA = path.join(ROOT, 'data');
+const DATA = process.env.SPECTRUM_ORBS_DATA_DIR || path.join(ROOT, 'data');
 const PORT = process.env.PORT || 8080;
 const MAX_BODY = 256 * 1024;
 
@@ -198,7 +198,7 @@ const routes = {
       durationMs: ranked ? check.elapsedMs : (body.durationMs | 0),
       invalids: ranked ? check.invalids : 0,
       sessionId: ranked ? String(check.sessionId) : '',
-      assists: body.assists || {},
+      assists: Object.assign({}, body.assists || {}, { timingAssist: check ? !!check.timingAssist : !!body.assists?.timingAssist }),
       verified: ranked,
       at: Date.now(),
     };
@@ -286,10 +286,15 @@ const server = http.createServer(async (req, res) => {
 
     // Static distribution (GET only, path-traversal safe).
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method-not-allowed' });
-    let rel = decodeURIComponent(url.pathname);
+    let rel;
+    try { rel = decodeURIComponent(url.pathname); } catch { return send(res, 400, { error: 'bad-path' }); }
+    if (rel.split(/[\\/]/).some(p => p.startsWith('.') || ['data', 'node_modules'].includes(p))) return send(res, 403, { error: 'forbidden' });
     if (rel === '/') rel = '/index.html';
     const filePath = path.normalize(path.join(ROOT, rel));
-    if (!filePath.startsWith(ROOT) || filePath.includes('..')) return send(res, 403, { error: 'forbidden' });
+    // Prefix check must be separator-aware: a sibling whose name merely
+    // starts with the root's name (e.g. "spectrum-orbs-evil") would
+    // otherwise pass a bare startsWith(ROOT).
+    if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) return send(res, 403, { error: 'forbidden' });
     fs.readFile(filePath, (err, data) => {
       if (err) return send(res, 404, { error: 'not-found' });
       const ext = path.extname(filePath).toLowerCase();
