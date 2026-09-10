@@ -5,4 +5,4 @@ server=server.js
 version=1.0.0
 contentVersion=3
 rulesetVersion=1
-cover=coverart.png
+cover=cover.jpg
