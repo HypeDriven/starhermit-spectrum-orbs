@@ -178,6 +178,20 @@ class Game {
 
     // Resize / orientation / DPR changes never lose input or restart a round.
     window.addEventListener('resize', () => { this.renderer.resize(); this.layoutTubeLabels(); });
+    // Refit when chrome over the playfield changes (tutorial card shown/hidden
+    // or resized, board-status strip growing) — the camera frames around it.
+    {
+      let raf = 0;
+      const refit = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { this.renderer.resize(); this.layoutTubeLabels(); }); };
+      const card = document.getElementById('tutorial-card');
+      const status = document.getElementById('board-status');
+      if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(refit);
+        if (card) ro.observe(card);
+        if (status) ro.observe(status);
+      }
+      if (card) new MutationObserver(refit).observe(card, { attributes: true, attributeFilter: ['hidden'] });
+    }
     window.addEventListener('orientationchange', () => setTimeout(() => { this.renderer.resize(); this.layoutTubeLabels(); }, 60));
 
     // Backgrounding pauses the solo simulation and the render loop.

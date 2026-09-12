@@ -675,18 +675,75 @@ export class GalleryRenderer {
 
   resetCamera() { this._frameCamera(false); }
 
+  /**
+   * Playfield rectangle not covered by DOM chrome (tutorial card, board-status
+   * strip). The camera frames the tubes inside it through a view offset, so
+   * instructions never sit on top of the targets.
+   */
+  _safeRect() {
+    const W = this.container.clientWidth || 1, H = this.container.clientHeight || 1;
+    let top = 0, bottom = H, left = 0, right = W;
+    const host = this.container.getBoundingClientRect();
+    const rectOf = (id) => {
+      const el = document.getElementById(id);
+      if (!el || el.hidden) return null;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      return { x: r.left - host.left, y: r.top - host.top, w: r.width, h: r.height };
+    };
+    const card = rectOf('tutorial-card');
+    if (card) {
+      if (card.w > W * 0.55) top = Math.max(top, card.y + card.h);       // banner across the top
+      else if (card.x + card.w / 2 < W / 2) left = Math.max(left, card.x + card.w); // docked left
+      else right = Math.min(right, card.x);                                // docked right
+    }
+    const status = document.getElementById('board-status');
+    if (status && status.offsetHeight) {
+      const r = status.getBoundingClientRect();
+      bottom = Math.min(bottom, r.top - host.top);
+    }
+    if (right - left < W * 0.4) { left = 0; right = W; }
+    if (bottom - top < H * 0.4) { top = 0; bottom = H; }
+    return { x: left, y: top, w: right - left, h: bottom - top, W, H };
+  }
+
+  _applyViewOffset() {
+    const sr = this._safeRect();
+    const pad = 6;
+    const sw = Math.max(1, sr.w - pad * 2), sh = Math.max(1, sr.h - pad * 2);
+    this.camera.aspect = sw / sh;
+    this.camera.setViewOffset(sw, sh, -(sr.x + pad), -(sr.y + pad), sr.W, sr.H);
+    this.camera.updateProjectionMatrix();
+  }
+
   _frameCamera(snap) {
     const p = FRAMING.presets[this.cameraPreset] || FRAMING.presets.default;
     const n = this._state ? this._state.tubes.length : 8;
-    let dist = (FRAMING.distBase + n * FRAMING.distPerTube) * p.dist;
-    // Aspect-aware fit: in narrow/portrait viewports, pull back until the
-    // whole row is inside the horizontal field of view.
-    const aspect = this.camera.aspect || 1;
-    const halfW = ((n - 1) / 2) * TUBE_SPACING + 1.15;
-    const hTan = Math.tan(THREE.MathUtils.degToRad(FRAMING.fov / 2)) * aspect;
+    const cap = this._state ? this._state.capacity : 4;
+    this._applyViewOffset();
+    // Fit by projection: probe the board's bounding corners (outer tubes, floor
+    // to the number labels above the glass) through a camera at the candidate
+    // distance and pull back until every corner is inside the safe rectangle.
+    const halfW = ((n - 1) / 2) * TUBE_SPACING + 0.9;
+    const tubeH = 0.32 + cap * (ORB_R * 2 + 0.015);
     const pitch = THREE.MathUtils.degToRad(FRAMING.pitchDeg);
-    const fitDist = (halfW / hTan) / Math.cos(pitch) + 1.2;
-    dist = Math.max(dist, fitDist);
+    const h = (2.6 + cap * FRAMING.heightPerCapacity) * p.height;
+    const lookY = FRAMING.lookAheadY + tubeH * 0.28;
+    const probe = new THREE.PerspectiveCamera(FRAMING.fov, this.camera.aspect || 1, 0.1, 100);
+    const pts = [];
+    for (const x of [-halfW, halfW]) for (const y of [0, tubeH + 1.35]) for (const z of [-0.6, 0.6]) pts.push(new THREE.Vector3(x, y, z));
+    const v = new THREE.Vector3();
+    let dist = 4.5 * p.dist;
+    for (let i = 0; i < 14; i++) {
+      probe.position.set(Math.sin(p.yaw) * dist * Math.cos(pitch), h, Math.cos(p.yaw) * dist * Math.cos(pitch));
+      probe.lookAt(0, lookY, 0);
+      probe.updateMatrixWorld();
+      probe.updateProjectionMatrix();
+      let over = 0;
+      for (const q of pts) { v.copy(q).project(probe); over = Math.max(over, Math.abs(v.x) / 0.94, Math.abs(v.y) / 0.9); }
+      if (over <= 1) break;
+      dist *= Math.min(1.6, over + 0.02);
+    }
     this._camSpring.dist.set(dist);
     this._camSpring.yaw.set(p.yaw);
     this._camSpring.height.set(p.height);
@@ -814,9 +871,7 @@ export class GalleryRenderer {
     const dpr = Math.min(window.devicePixelRatio || 1, this.tier.pixelRatioCap) * (this._renderScale || 1);
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    this._frameCamera(false); // aspect change may require re-fit (portrait)
+    this._frameCamera(false); // aspect / chrome change may require re-fit
   }
 
   /** Screen-space anchor for DOM labels (shared layout model, spec §3). */
