@@ -275,7 +275,6 @@
       set('#set-large-text', s.largeText); set('#set-left-handed', s.leftHanded);
       set('#set-hold-select', s.holdToSelect); set('#set-timing-assist', s.timingAssist);
       set('#set-haptics', s.haptics);
-      set('#set-telemetry', s.telemetryConsent === true);
 
       const wire = (id, fn) => {
         const el = this.$(id);
@@ -299,7 +298,6 @@
       wire('#set-hold-select', (v) => s.holdToSelect = v);
       wire('#set-timing-assist', (v) => s.timingAssist = v);
       wire('#set-haptics', (v) => s.haptics = v);
-      wire('#set-telemetry', (v) => s.telemetryConsent = v);
 
       this.renderBindings();
     }
@@ -411,13 +409,13 @@
       const body = this.$('#profile-body');
       const completed = Object.keys(progression.journey || {}).length;
       const total = Content.JOURNEY.length;
-      const name = (platform.profile && platform.profile.privacy !== 'hidden' && platform.profile.name) || 'Guest';
+      const name = (platform.profile && platform.profile.name) || 'Guest';
       body.innerHTML = '';
       const p = document.createElement('p');
       p.textContent = name + ' — ' + completed + ' of ' + total + ' journey stages complete. ' +
         progression.stats.totalCompletions + ' total boards finished. Daily streak: ' + progression.streak.count + '.';
       body.appendChild(p);
-      if (!platform.profile) {
+      if (!platform.hosted) {
         const note = document.createElement('p');
         note.className = 'rail-note';
         note.textContent = 'Playing as guest — progress is stored on this device. Sign in through the host for cloud sync.';
@@ -441,7 +439,14 @@
       const rows = this.$('#scores-rows');
       rows.innerHTML = '';
       const entries = (data && data.entries) || [];
-      this.$('#scores-casual-note').hidden = !(data && data.casual);
+      const note = this.$('#scores-casual-note');
+      if (data && data.note) {
+        note.hidden = false;
+        note.textContent = data.note;
+      } else {
+        note.hidden = !(data && data.casual);
+        note.textContent = 'Casual board — authoritative validation unavailable offline.';
+      }
       if (!entries.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
@@ -451,7 +456,9 @@
       }
       entries.slice(0, 50).forEach((e, i) => {
         const tr = document.createElement('tr');
-        for (const v of [i + 1, e.player || 'Guest', e.score, String(e.seed).slice(0, 8), fmtTime(e.durationMs || 0)]) {
+        for (const v of [i + 1, e.player || 'Guest', e.score,
+             e.seed === null || e.seed === undefined ? '—' : String(e.seed).slice(0, 8),
+             fmtTime(e.durationMs || 0)]) {
           const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
         }
         rows.appendChild(tr);
@@ -471,8 +478,15 @@
       const conn = this.$('#conn-status');
       conn.textContent = platform.hosted ? 'Online' : 'Offline';
       conn.classList.toggle('online', platform.hosted);
+      const sync = this.$('#sync-status');
+      if (sync) {
+        const st = platform.syncStatus();
+        sync.hidden = st === 'offline' || st === 'idle';
+        sync.textContent = st === 'synced' ? 'Synced' : st === 'saving' ? 'Saving…' : '';
+        sync.classList.toggle('saving', st === 'saving');
+      }
       const chip = this.$('#profile-chip');
-      chip.textContent = (platform.profile && platform.profile.privacy !== 'hidden' && platform.profile.name) || 'Guest';
+      chip.textContent = (platform.profile && platform.profile.name) || 'Guest';
       const done = Object.keys((progression && progression.journey) || {}).length;
       this.$('#journey-progress-label').textContent = done + ' / ' + Content.JOURNEY.length + ' stages';
     }

@@ -10,9 +10,10 @@ npm start          # node server.js -> http://localhost:8080
 ```
 
 Or open `index.html` via any static file server. The game is fully playable
-offline (guest practice, journey, daily); when served by `server.js`, hosted
-features activate: server-time sync, cloud saves, validated leaderboards,
-durable achievements.
+offline (guest practice, journey, daily). Hosted mode activates only when a
+launch token is in the URL (`#game_token=<jwt>`): server-time sync, account
+nickname, cloud saves on the platform slot, read-only platform leaderboard,
+45-minute token refresh.
 
 ## Tests
 

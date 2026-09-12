@@ -20,14 +20,14 @@
  * modified.
  *
  * Serving: the repo ships `server.js` (the StarHermit authoritative script
- * declared by starhermit.txt). The game is fully playable offline — when
- * `/api/v1/time` is unavailable the platform adapter sets `hosted=false`
- * and every screen (journey, daily, practice, challenge, learn, results)
- * works locally, degrading to localStorage (platform.js). So, per the test
+ * declared by starhermit.txt). The game is fully playable offline — hosted
+ * mode activates only when a launch token is present, and without one
+ * (platform.js) every screen (journey, daily, practice, challenge, learn,
+ * results) works locally, degrading to localStorage. So, per the test
  * conventions of the sibling titles (picture-logic/blockstead/balance-spire),
  * this test embeds a minimal node:http static server on an ephemeral port
- * and answers /api/* probes with 200 `{}` (the /api/v1/time probe then sees
- * no `now` and flips hosted=false), leaving zero console noise. If the UI
+ * and answers /api/* probes with 200 `{}` (the /api/v1/time sync then sees
+ * no `now` and keeps the local clock), leaving zero console noise. If the UI
  * ever starts requiring the real backend this can be swapped for spawning
  * `server.js`; today it is not needed.
  *
@@ -68,8 +68,8 @@ const server = http.createServer(async (req, res) => {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
     // No StarHermit backend here: answer API probes with empty JSON (200) so
-    // the platform adapter degrades to its documented offline mode without
-    // console noise (platform.js: /api/v1/time with no `now` → hosted=false).
+    // the platform adapter stays in its documented standalone mode without
+    // console noise (platform.js: no launch token → hosted=false locally).
     if (p.startsWith('/api/')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('{}');

@@ -19,6 +19,7 @@
     </button>
     <div class="topbar-status">
       <span id="conn-status" class="conn" role="status">Offline</span>
+      <span id="sync-status" class="sync" role="status" hidden></span>
       <span id="clock-status" class="clock" title="Platform time"></span>
       <span id="profile-chip" class="profile-chip"></span>
       <button id="btn-help-top" class="icon-btn" data-action="help" aria-label="Help">?</button>
@@ -58,11 +59,11 @@
     <div class="card-grid" id="mode-cards">
       <button class="card" data-action="setup-journey">
         <h3>Journey</h3><p>Forty authored stages across five gallery wings. New ideas arrive one at a time.</p>
-        <span class="card-meta">Ranked per stage · ~2–5 min each</span>
+        <span class="card-meta">Scored per stage · ~2–5 min each</span>
       </button>
       <button class="card" data-action="setup-daily">
         <h3>Daily</h3><p>One shared seed for everyone, per UTC day. Compare scores with friends.</p>
-        <span class="card-meta">Ranked · one board per day</span>
+        <span class="card-meta">One board per day · platform time</span>
       </button>
       <button class="card" data-action="setup-practice">
         <h3>Practice</h3><p>Selectable difficulty, free undo and hints, fresh boards on demand.</p>
@@ -70,15 +71,15 @@
       </button>
       <button class="card" data-action="setup-challenge">
         <h3>Challenge</h3><p>Move limits, speed targets, crowded layouts, restricted tools.</p>
-        <span class="card-meta">Ranked · five trials</span>
+        <span class="card-meta">Five trials</span>
       </button>
       <button class="card" data-action="setup-learn">
         <h3>Learn</h3><p>Interactive lessons. One rule at a time — you perform each action.</p>
         <span class="card-meta">Unranked · five lessons</span>
       </button>
       <button class="card" data-action="scores">
-        <h3>Score Chase</h3><p>Global and friends leaderboards on validated seeds and rulesets.</p>
-        <span class="card-meta">Asynchronous comparison</span>
+        <h3>Score Chase</h3><p>Global platform leaderboard plus local personal-best records.</p>
+        <span class="card-meta">Asynchronous comparison · read-only</span>
       </button>
     </div>
     <button class="text-btn" data-action="home">← Back to title</button>
@@ -234,10 +235,6 @@
           <legend>Controls</legend>
           <div id="bindings-list"></div>
           <p class="rail-note">Keyboard and gamepad bindings. Touch uses the on-screen controls.</p>
-        </fieldset>
-        <fieldset>
-          <legend>Privacy</legend>
-          <label class="check"><input type="checkbox" id="set-telemetry"> Allow anonymous usage statistics</label>
         </fieldset>
       </div>
       <div class="row"><button class="menu-btn primary" data-action="close-overlay">Done</button></div>

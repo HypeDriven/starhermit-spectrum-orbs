@@ -74,6 +74,9 @@ body.left-handed .rail#rail-right { order: -1; }
 .topbar-status { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; color: var(--ink-dim); }
 .conn::before { content: "●"; margin-right: 4px; color: var(--danger); }
 .conn.online::before { color: var(--accent-2); }
+.sync { color: var(--ink-dim); }
+.sync::before { content: "✓"; margin-right: 4px; color: var(--accent-2); }
+.sync.saving::before { content: "…"; color: var(--warn, #e8a33f); }
 .icon-btn {
   min-width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--panel); color: var(--ink); font-size: 1.1rem; cursor: pointer;
@@ -135,11 +138,6 @@ body.left-handed .rail#rail-right { order: -1; }
 .setup-body .card { margin-bottom: 10px; width: 100%; }
 .setup-facts { color: var(--ink-dim); font-size: 0.9rem; margin: 8px 0 0; }
 .setup-facts span { margin-right: 14px; }
-.ranked-badge {
-  display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem;
-  background: var(--panel-2); border: 1px solid var(--line); margin-left: 8px;
-}
-.ranked-badge.ranked { color: var(--accent-2); border-color: var(--accent-2); }
 
 /* ------------------------------------------------------------ game -- */
 .game-screen {

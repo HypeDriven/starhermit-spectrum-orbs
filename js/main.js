@@ -72,23 +72,19 @@ class Game {
       document.getElementById('compat-message').hidden = false;
     }
 
-    // Platform handshake: time sync + cloud progression reconciliation.
+    // Platform handshake: time sync + cloud progression reconciliation + profile.
+    this.platform.onSyncChange = () => this.ui.updateTopbar(this.platform, this.progression);
     this.platform.syncTime().then((ok) => {
       this.updateClock();
       if (ok) this.ui.toast('Synced with platform time');
     });
     this.platform.syncProgression(this.progression).then((res) => {
-      if (res.conflict) {
-        // Neither snapshot descends from the other: keep both, ask player.
-        const useCloud = window.confirm(
-          'A different save exists in the cloud (' + new Date(res.remote.updatedAt).toLocaleString() +
-          '). Use the cloud copy? Cancel keeps this device\'s copy (both are preserved).');
-        this.progression = useCloud ? res.remote : res.local;
-      } else if (res.resolved) {
-        this.progression = res.resolved;
-      }
+      if (res.resolved) this.progression = res.resolved;
       this.ui.updateTopbar(this.platform, this.progression);
     });
+    if (this.platform.hosted) {
+      this.platform.loadProfile().then(() => this.ui.updateTopbar(this.platform, this.progression));
+    }
 
     // Returning player: offer resume of the last safe snapshot.
     const snap = this.platform.loadRoundSnapshot();
@@ -106,7 +102,6 @@ class Game {
     this._bindGlobal();
     this.updateClock();
     setInterval(() => this.updateClock(), 1000); // permanent title/HUD clock
-    this.platform.track('start', { mode: 'boot' });
   }
 
   _handlers() {
@@ -141,7 +136,7 @@ class Game {
         g.classList.remove('rail-left-open');
       },
       'leave': () => this.leaveRound(),
-      'retry': () => { this.ui.closeAllOverlays(); this.platform.track('retry', { mode: this.mode }); this.restartRound(); },
+      'retry': () => { this.ui.closeAllOverlays(); this.restartRound(); },
       'results-next': () => this.resultsNext(),
       'settings': () => this.ui.openOverlay('settings'),
       'help': () => { this.ui.renderHelp(); this.ui.openOverlay('help'); },
@@ -205,12 +200,7 @@ class Game {
 
     window.addEventListener('beforeunload', () => {
       this.persistRound();
-      this.platform.activityEnd();
-      this.platform.flushTelemetry();
-    });
-
-    window.addEventListener('error', (e) => {
-      this.platform.track('error', { category: (e.message || 'unknown').slice(0, 40) });
+      this.platform.flushCloudSave();
     });
 
     // Gamepad polling (edge-triggered).
@@ -242,7 +232,7 @@ class Game {
     this.pendingLevel = next;
     this.mode = 'journey';
     this.renderSetup(next, {
-      modeLabel: 'Journey', ranked: true, duration: '2–5 min',
+      modeLabel: 'Journey', duration: '2–5 min',
       assists: 'Undo + hints enabled', players: 1,
       extra: 'Stage ' + next.index + ' of ' + Content.JOURNEY.length +
         (next.mastery ? ' · Mastery stage' : '') + ' · Theme: ' + Content.THEMES[next.theme].name,
@@ -290,7 +280,7 @@ class Game {
     const body = document.getElementById('setup-body');
     body.innerHTML = '';
     const h = document.createElement('h3');
-    h.textContent = 'Challenge trials — ranked';
+    h.textContent = 'Challenge trials';
     body.appendChild(h);
     for (const c of Content.CHALLENGES) {
       const card = document.createElement('button');
@@ -312,11 +302,7 @@ class Game {
     const body = document.getElementById('setup-body');
     body.innerHTML = '';
     const h = document.createElement('h3');
-    h.textContent = (level.name || level.id) + ' ';
-    const badge = document.createElement('span');
-    badge.className = 'ranked-badge' + (info.ranked ? ' ranked' : '');
-    badge.textContent = info.ranked ? 'Ranked' : 'Unranked';
-    h.appendChild(badge);
+    h.textContent = (level.name || level.id);
     body.appendChild(h);
     const facts = document.createElement('p');
     facts.className = 'setup-facts';
@@ -398,9 +384,6 @@ class Game {
       this.runCountdown();
     }
     this.startTimers();
-    this.platform.activityStart();
-    this.platform.heartbeatStart();
-    this.platform.track('start', { mode });
     this.persistRound();
   }
 
@@ -447,7 +430,6 @@ class Game {
     };
     this.startLevel(level, 'learn', { skipCountdown: true });
     this.ui.renderTutorial(step, this.tutorialIndex, Content.TUTORIAL.length);
-    this.platform.track('tutorial_step', { step: step.id });
   }
 
   advanceTutorial(skipped) {
@@ -517,8 +499,6 @@ class Game {
     this.stopTimers();
     this.renderer.stop();
     this.audio.stopAmbience();
-    this.platform.heartbeatStop();
-    this.platform.activityEnd();
     this.ui.renderTutorial(null);
     this.ui.updateTopbar(this.platform, this.progression);
     this.setState('title', 'user');
@@ -798,8 +778,8 @@ class Game {
   updateHud() {
     if (!this.session) return;
     const note = {
-      journey: 'Journey · ranked', daily: 'Daily · ranked · seed ' + this.level.seed.toString(16),
-      practice: 'Practice · unranked', challenge: 'Challenge · ranked', learn: 'Lesson',
+      journey: 'Journey', daily: 'Daily · seed ' + this.level.seed.toString(16),
+      practice: 'Practice · unranked', challenge: 'Challenge', learn: 'Lesson',
     }[this.mode] || '';
     this.ui.updateHud(this.session.state, this.level, this.session.score(), note);
   }
@@ -907,7 +887,8 @@ class Game {
       await this.platform.saveProgression(prog);
       this.progression = this.platform.loadProgression();
 
-      // Ranked submission with replay validation (spec §6).
+      // Personal-best record with replay provenance (spec §6). Platform
+      // leaderboards are read-only; this stays local + cloud-mirrored.
       let boardText = '';
       if (won && ['daily', 'challenge', 'journey'].includes(this.mode)) {
         const board = this.mode === 'daily' ? 'daily:' + this.platform.utcDate()
@@ -922,17 +903,13 @@ class Game {
           durationMs: result.elapsedMs, sessionId: result.sessionId,
           replay: check.ok ? envelope : null,
         });
-        console.info('[score-submit]', JSON.stringify({ board, check: check.ok, stored: sub.stored, casual: sub.casual, warning: sub.warning }));
-        boardText = sub.stored === 'cloud'
-          ? (sub.casual
-            ? 'Stored on the casual board (score could not be server-verified).'
-            : 'Submitted to the ' + board + ' leaderboard' + (sub.rank ? ' — rank #' + sub.rank : '') + '.')
-          : 'Saved to the local casual board (offline).';
+        console.info('[score-record]', JSON.stringify({ board, check: check.ok, stored: sub.stored, casual: sub.casual }));
+        boardText = this.platform.hosted
+          ? 'Personal best recorded on this device and synced to your account.'
+          : 'Saved to the local board (offline).';
       }
 
       this.persistRoundClear();
-      this.platform.track('round_end', { mode: this.mode, won });
-      this.platform.flushTelemetry();
 
       const nextInfo = this.nextRecommendation();
       this.ui.showResults(result, this.level, {
@@ -1002,6 +979,7 @@ class Game {
       ['journey', 'Journey (all stages)'],
       ...Content.CHALLENGES.map((c) => [c.id, c.name]),
     ];
+    if (this.platform.hosted) boards.unshift(['platform', 'Global (platform)']);
     for (const [val, label] of boards) {
       const o = document.createElement('option');
       o.value = val; o.textContent = label;
