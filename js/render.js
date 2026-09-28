@@ -451,7 +451,7 @@ export class GalleryRenderer {
   _rebuildBoard(state) {
     this._state = state;
     this._selected = -1;
-    this._tweens = [];
+    this._finishTweens(); // settle (and resolve) in-flight moves before the meshes go away
     this._deepDispose(this._boardGroup);
     this._deepDispose(this._ghostGroup);
     this.scene.remove(this._boardGroup, this._ghostGroup);
@@ -766,6 +766,11 @@ export class GalleryRenderer {
             return false;
           }
           return true;
+        },
+        // Scene rebuilt / animations skipped: land the orb and settle the promise.
+        finish: () => {
+          orb.position.set(0, this._orbRestY(targetStack), 0);
+          resolve();
         },
       });
     });
@@ -1168,12 +1173,20 @@ export class GalleryRenderer {
         if (t >= 1) { if (onDone) onDone(); return false; }
         return true;
       },
+      finish: () => { Object.assign(obj, props); if (onDone) onDone(); },
     });
+  }
+
+  /** Jump every pending tween to its end, resolving any waiting move promises. */
+  _finishTweens() {
+    const pending = this._tweens;
+    this._tweens = [];
+    for (const tw of pending) if (tw.finish) tw.finish();
   }
 
   /** Skip/fast-forward: settle every animated object into its exact end state. */
   skipAnimations() {
-    this._tweens = [];
+    this._finishTweens();
     if (this._state) this.syncState(this._state);
     this._shakeAmp = 0;
   }

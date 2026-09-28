@@ -340,6 +340,28 @@ async function runPass(browser, name, ctxOpts, { full }) {
       await page.selectOption('#set-tier', 'auto');
       await closeSettings(page);
       ok(`${name}: Ultra preset renders in-game with post-processing (no errors)`);
+
+      // Regression: a scene rebuild (Gallery detail change) or reduced-motion
+      // skip mid-move must settle the move animation instead of hanging it.
+      const settled = await page.evaluate(async () => {
+        const r = window.SpectrumGame.renderer;
+        const s = window.SpectrumGame.session.state;
+        const from = s.tubes.findIndex((t) => t.length), to = s.tubes.findIndex((t) => !t.length);
+        const within = (p) => Promise.race([p.then(() => true), new Promise((res) => setTimeout(() => res(false), 3000))]);
+        const out = {};
+        let p = r.animateMove({ from, to });
+        r.setGraphics({ preset: 'low', detail: r.q.detail === 'detailed' ? 'plain' : 'detailed' });
+        out.detail = await within(p);
+        p = r.animateMove({ from, to });
+        r.setReducedMotion(true);
+        out.reduced = await within(p);
+        r.setReducedMotion(false);
+        r.syncState(s);
+        r.setGraphics(window.SpectrumGame.ui.settings.graphics);
+        return out;
+      });
+      if (!settled.detail || !settled.reduced) throw new Error('move animation hung on rebuild/skip: ' + JSON.stringify(settled));
+      ok(`${name}: in-flight move animation settles on detail change and reduced-motion skip`);
     } else {
       // mobile: tap a few legal tube chips via touchscreen.tap and confirm
       // the engine registers real progress.
