@@ -7,6 +7,7 @@
  * Every transition goes through setState() with an explicit reason.
  */
 import { GalleryRenderer } from './render.js';
+import { mountGraphicsPanel, migrateGraphics } from './gfx-panel.js';
 
 const Rules = window.SpectrumRules;
 const Content = window.SpectrumContent;
@@ -46,8 +47,6 @@ class Game {
     this._labelTimer = null;
     this._gamepadState = {};
     this._awayAt = null;
-    this._fpsSamples = [];
-    this._renderScale = 1;
 
     const container = document.getElementById('gl-container');
     this.renderer = new GalleryRenderer(container, {
@@ -63,6 +62,12 @@ class Game {
     this.ui.init(this._handlers());
     this.ui.applyAccessibilityClasses();
     this.ui.bindSettings((s) => this.applySettings(s));
+    this.ui.settings.graphics = migrateGraphics(this.ui.settings.graphics);
+    this.gfxPanel = mountGraphicsPanel(document.getElementById('gfx-mount'), {
+      settings: this.ui.settings,
+      renderer: this.renderer.webglOk ? this.renderer : null,
+      onChange: () => this.applySettings(this.ui.settings),
+    });
     this.ui.renderHelp();
     this.ui.updateTopbar(this.platform, this.progression);
     this.applySettings(this.ui.settings, true);
@@ -736,11 +741,10 @@ class Game {
       this.updateHud();
     }, 250);
     this._labelTimer = setInterval(() => this.layoutTubeLabels(), 400);
-    this._fpsTimer = setInterval(() => this.checkPerf(), 3000);
   }
 
   stopTimers() {
-    for (const k of ['_hudTimer', '_labelTimer', '_fpsTimer']) {
+    for (const k of ['_hudTimer', '_labelTimer']) {
       if (this[k]) { clearInterval(this[k]); this[k] = null; }
     }
   }
@@ -754,28 +758,6 @@ class Game {
       const next = new Date(this.platform.utcDate() + 'T00:00:00Z').getTime() + 86400000;
       dl.textContent = 'next board in ' + fmtTime(next - now);
     }
-  }
-
-  /** Dynamic quality: lower render scale before ever touching the sim. */
-  checkPerf() {
-    if (!this.renderer.renderer) return;
-    // Cheap frame pacing probe over the last interval.
-    const t0 = performance.now();
-    requestAnimationFrame(() => {
-      const dt = performance.now() - t0;
-      this._fpsSamples.push(dt);
-      if (this._fpsSamples.length > 10) {
-        const avg = this._fpsSamples.reduce((a, b) => a + b, 0) / this._fpsSamples.length;
-        this._fpsSamples = [];
-        if (avg > 24 && this._renderScale > 0.6) {
-          this._renderScale = Math.max(0.6, this._renderScale - 0.15);
-          this.renderer.setRenderScale(this._renderScale);
-        } else if (avg < 12 && this._renderScale < 1) {
-          this._renderScale = Math.min(1, this._renderScale + 0.15);
-          this.renderer.setRenderScale(this._renderScale);
-        }
-      }
-    });
   }
 
   onStateChange(state, events) {
@@ -1024,8 +1006,8 @@ class Game {
     this.audio.setMuted(s.audio.muted);
     this.renderer.setReducedMotion(s.reducedMotion);
     if (this.renderer.webglOk) {
-      const tier = s.graphics.tier === 'auto' ? this.autoTier() : s.graphics.tier;
-      if (tier !== this.renderer.tierName) this.renderer.setQuality(tier);
+      // Quality presets / overrides apply live (adaptive resolution lives in the renderer).
+      this.renderer.setGraphics(s.graphics);
       this.renderer.setCameraPreset(s.camera);
       // Palette change rebuilds orb materials on the current board.
       const pal = Content.palette(s.palette);
@@ -1035,13 +1017,6 @@ class Game {
         this.updateBoardMirror();
       }
     }
-  }
-
-  autoTier() {
-    const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    const cores = navigator.hardwareConcurrency || 4;
-    if (mobile || cores <= 4) return 'medium';
-    return 'high';
   }
 }
 

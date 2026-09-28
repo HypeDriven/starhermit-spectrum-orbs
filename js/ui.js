@@ -269,7 +269,7 @@
       set('#set-music', s.audio.music); set('#set-effects', s.audio.effects);
       set('#set-ambience', s.audio.ambience); set('#set-voice', s.audio.voice);
       set('#set-muted', s.audio.muted);
-      set('#set-tier', s.graphics.tier); set('#set-camera', s.camera);
+      set('#set-camera', s.camera);
       set('#set-palette', s.palette);
       set('#set-reduced-motion', s.reducedMotion); set('#set-high-contrast', s.highContrast);
       set('#set-large-text', s.largeText); set('#set-left-handed', s.leftHanded);
@@ -288,7 +288,6 @@
       wire('#set-ambience', (v) => s.audio.ambience = +v);
       wire('#set-voice', (v) => s.audio.voice = +v);
       wire('#set-muted', (v) => s.audio.muted = v);
-      wire('#set-tier', (v) => s.graphics.tier = v);
       wire('#set-camera', (v) => s.camera = v);
       wire('#set-palette', (v) => s.palette = v);
       wire('#set-reduced-motion', (v) => s.reducedMotion = v);

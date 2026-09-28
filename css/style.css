@@ -287,6 +287,27 @@ select {
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
   border-radius: 8px; padding: 6px 8px; font-size: 0.9rem; min-height: 36px;
 }
+/* Graphics section: spans the settings grid; effect selects in two columns. */
+.gfx-fieldset { grid-column: 1 / -1; }
+.gfx-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); column-gap: 18px; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 4px; }
+.gfx-cats label select { min-width: 0; max-width: 72%; flex-shrink: 0; }
+.gfx-cats label { gap: 8px; }
+.gfx-panel > label select { max-width: 62%; }
+.gfx-scale { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.gfx-scale output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+.gfx-summary { font-size: 0.8rem; margin: 8px 0 4px; overflow-wrap: anywhere; }
+.gfx-note { color: var(--accent-2); font-size: 0.8rem; }
+@media (max-width: 520px) {
+  .gfx-panel label:not(.check) { flex-direction: column; align-items: stretch; gap: 4px; }
+  .gfx-panel label select, .gfx-cats select { max-width: none; width: 100%; }
+  .gfx-scale input[type="range"] { flex: 1; }
+}
+#fps-meter {
+  position: fixed; left: calc(8px + var(--sal, 0px)); bottom: calc(8px + var(--sab, 0px)); z-index: 95;
+  pointer-events: none; font: 600 0.72rem/1 ui-monospace, monospace; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 6px;
+}
 .binding-row { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; font-size: 0.88rem; }
 .binding-row button { min-width: 84px; min-height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; }
 

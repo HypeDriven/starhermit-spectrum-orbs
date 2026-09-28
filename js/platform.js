@@ -26,7 +26,7 @@
   const DEFAULT_SETTINGS = {
     version: SETTINGS_VERSION,
     audio: { music: 0.6, effects: 0.8, ambience: 0.5, voice: 0.8, muted: false },
-    graphics: { tier: 'auto' },           // auto | low | medium | high
+    graphics: { preset: 'auto' },         // gfx.js model: preset + per-category overrides
     palette: 'default',                   // default | cvd | contrast
     camera: 'default',                    // default | close | wide
     reducedMotion: false,

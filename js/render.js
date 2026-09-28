@@ -12,7 +12,17 @@
  *
  * The renderer consumes immutable snapshots; it never touches rules state.
  */
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { detectPreset, describe, resolve, SHADOW_MAP, PARTICLE_BUDGET } from './gfx.js';
 
 const LAYER_ENV = 0;
 const LAYER_PICK = 1;   // raycast-only interaction layer
@@ -39,11 +49,33 @@ const TUBE_R = 0.21;
 const TUBE_SPACING = 0.92;
 const ARC_DEPTH = 0.055; // gentle arc so outer tubes recede
 
-const QUALITY_TIERS = {
-  low: { pixelRatioCap: 1, shadows: false, particles: 0, envDetail: 0.3, anisotropy: 1 },
-  medium: { pixelRatioCap: 1.5, shadows: true, particles: 600, envDetail: 0.7, anisotropy: 2 },
-  high: { pixelRatioCap: 2, shadows: true, particles: 2000, envDetail: 1, anisotropy: 4 },
+/** Colour grade + vignette (display-space in, display-space out). */
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uAmount: { value: 1.0 }, uVignette: { value: 0.26 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uAmount; uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = clamp(src.rgb, 0.0, 1.0);
+      // Gentle S-curve, a touch more saturation, cool shadows / warm highlights.
+      vec3 s = mix(c, c * c * (3.0 - 2.0 * c), 0.22);
+      float l = dot(s, vec3(0.299, 0.587, 0.114));
+      s = mix(vec3(l), s, 1.1);
+      s *= mix(vec3(0.97, 0.99, 1.05), vec3(1.04, 1.0, 0.97), smoothstep(0.15, 0.8, l));
+      c = mix(c, s, uAmount);
+      float d = length((vUv - 0.5) * vec2(1.15, 1.0));
+      c *= 1.0 - uVignette * smoothstep(0.38, 0.9, d);
+      gl_FragColor = vec4(c, src.a);
+    }`,
 };
+
+/** Deterministic value noise for procedural surface textures. */
+function hash2(x, y) {
+  const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return h - Math.floor(h);
+}
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
@@ -78,8 +110,20 @@ export class GalleryRenderer {
     this.renderer = null;
     this.webglOk = true;
     this.reducedMotion = false;
-    this.tierName = 'high';
-    this.tier = QUALITY_TIERS.high;
+    this.q = resolve({}, 'balanced');
+    this.tierName = this.q.preset;
+    this.gpu = '';
+    this.detected = 'balanced';
+    this.composer = null;
+    this.postFailed = false;
+    this.postKey = null;
+    this.adaptiveScale = 1;
+    this.fps = 0;
+    this._frames = [];
+    this._lastFrameAt = 0;
+    this._size = [0, 0];
+    this.pixelRatio = 1;
+    this._shimmer = [];
     this.palette = [];
     this.theme = null;
     this.cameraPreset = 'default';
@@ -111,8 +155,15 @@ export class GalleryRenderer {
     }
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = false;
+    this.gpu = GalleryRenderer._gpuName(this.renderer);
+    const mobile = (navigator.maxTouchPoints || 0) > 0 && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+      || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    this.detected = detectPreset(this.gpu, mobile);
+    this.q = resolve({}, this.detected);
+    this.tierName = this.q.preset;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(FRAMING.fov, 1, 0.1, 100);
@@ -129,9 +180,20 @@ export class GalleryRenderer {
     this.scene.add(this._envGroup, this._boardGroup, this._ghostGroup, this._fxGroup);
 
     this._initParticles();
+    this._initMotes();
     this._bindPointer();
     this._bindContextLoss();
     this.resize();
+  }
+
+  static _gpuName(r) {
+    try {
+      const gl = r.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    } catch (e) {
+      return '';
+    }
   }
 
   // ------------------------------------------------------------ lifecycle --
@@ -146,6 +208,8 @@ export class GalleryRenderer {
       // Rebuild GPU resources from retained CPU descriptors (spec §5).
       this._contextLost = false;
       this.renderer.compile(this.scene, this.camera);
+      if (this._envTex) { this._envTex.dispose(); this._envTex = null; this._applyReflections(); }
+      this.postKey = null;
       if (this._state) this._rebuildBoard(this._state);
       this.start();
     });
@@ -155,6 +219,8 @@ export class GalleryRenderer {
     this._disposed = true;
     this.stop();
     this._deepDispose(this.scene);
+    if (this.composer) this.composer.dispose();
+    if (this._envTex) this._envTex.dispose();
     if (this.renderer) this.renderer.dispose();
     if (this.canvas.parentNode) this.canvas.parentNode.removeChild(this.canvas);
   }
@@ -164,7 +230,7 @@ export class GalleryRenderer {
       if (o.geometry) o.geometry.dispose();
       if (o.material) {
         for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-          for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap']) if (m[k]) m[k].dispose();
+          for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap']) if (m[k] && !m[k].userData.shared) m[k].dispose();
           m.dispose();
         }
       }
@@ -195,35 +261,41 @@ export class GalleryRenderer {
     this.scene.remove(this._envGroup);
     this._envGroup = new THREE.Group();
     this.scene.add(this._envGroup);
+    this._decorSpinners = [];
+    this._shimmer = [];
     const t = this.theme;
-    const detail = this.tier.envDetail;
+    const detailed = this.q.detail === 'detailed';
 
     this.scene.background = new THREE.Color(t.sky);
     this.scene.fog = new THREE.Fog(t.fog, 14, 42);
 
-    // Lighting: one dominant key, soft environment fill, contact grounding.
+    // Lighting: one dominant key, soft environment fill, cool rim.
     const hemi = new THREE.HemisphereLight(t.hemiSky, t.hemiGround, 0.85);
     this._envGroup.add(hemi);
+    this._hemi = hemi;
     const key = new THREE.DirectionalLight(t.keyLight, t.keyIntensity);
     key.position.set(4.5, 8, 5);
-    key.castShadow = this.tier.shadows;
-    if (key.castShadow) {
-      key.shadow.mapSize.set(1024, 1024);
-      key.shadow.camera.left = -8; key.shadow.camera.right = 8;
-      key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
-      key.shadow.bias = -0.0004;
-    }
-    this._envGroup.add(key);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    this._envGroup.add(key, key.target);
     this._keyLight = key;
     const rim = new THREE.DirectionalLight(t.hemiSky, 0.5);
     rim.position.set(-6, 4, -4);
     this._envGroup.add(rim);
 
-    // Floor: broad disc with a subtle radial accent ring.
+    // Floor: broad disc; detailed = polished terrazzo with roughness variation.
     const floorMat = new THREE.MeshStandardMaterial({ color: t.floor, roughness: 0.85, metalness: 0.05 });
+    if (detailed) {
+      const tex = this._floorTexture();
+      floorMat.map = tex;
+      floorMat.roughnessMap = tex;
+      floorMat.roughness = 0.9;
+      floorMat.color = new THREE.Color(t.floor).multiplyScalar(1.12);
+      floorMat.envMapIntensity = 0.12;
+    }
     const floor = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 0.3, 48), floorMat);
     floor.position.y = -0.15;
-    floor.receiveShadow = this.tier.shadows;
+    floor.receiveShadow = true;
     this._envGroup.add(floor);
     const ringMat = new THREE.MeshStandardMaterial({ color: t.floorAccent, roughness: 0.7 });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.05, 8, 64), ringMat);
@@ -231,36 +303,68 @@ export class GalleryRenderer {
     this._envGroup.add(ring);
 
     // Back wall panels (instanced — repeated environment modules).
-    if (detail > 0.2) {
-      const panelCount = Math.round(7 * detail) + 3;
-      const panelGeo = new THREE.BoxGeometry(1.6, 5.5, 0.18);
-      const panelMat = new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.8 });
-      const panels = new THREE.InstancedMesh(panelGeo, panelMat, panelCount);
-      const m = new THREE.Matrix4();
-      for (let i = 0; i < panelCount; i++) {
-        const a = (i / (panelCount - 1) - 0.5) * Math.PI * 0.9;
-        const r = 12;
-        m.makeRotationY(-a);
-        m.setPosition(Math.sin(a) * r, 2.6, -Math.cos(a) * r - 2);
-        panels.setMatrixAt(i, m);
-      }
-      panels.instanceMatrix.needsUpdate = true;
-      this._envGroup.add(panels);
+    const panelCount = detailed ? 11 : 5; // odd: a panel always sits behind the board
+    const panelGeo = new THREE.BoxGeometry(1.6, 5.5, 0.18);
+    const panelMat = new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.8 });
+    const panels = new THREE.InstancedMesh(panelGeo, panelMat, panelCount);
+    const m = new THREE.Matrix4();
+    const panelAt = (i) => (i / (panelCount - 1) - 0.5) * Math.PI * 0.9;
+    for (let i = 0; i < panelCount; i++) {
+      const a = panelAt(i);
+      m.makeRotationY(-a);
+      m.setPosition(Math.sin(a) * 12, 2.6, -Math.cos(a) * 12 - 2);
+      panels.setMatrixAt(i, m);
     }
+    panels.instanceMatrix.needsUpdate = true;
+    this._envGroup.add(panels);
 
-    // Kinetic sculpture mobiles: slow deterministic spin (paused when hidden).
-    if (detail > 0.4) {
-      const count = Math.round(3 * detail);
+    if (detailed) {
+      // Gallery light strips between the panels: HDR emissive so bloom catches them.
+      const stripMat = new THREE.MeshStandardMaterial({
+        color: 0x000000, emissive: new THREE.Color(t.keyLight), emissiveIntensity: 2.2, roughness: 1,
+      });
+      // Skip the seam straight behind the board so no strip cuts through the play area.
+      const seams = [];
+      for (let i = 0; i < panelCount - 1; i++) {
+        const a = (panelAt(i) + panelAt(i + 1)) / 2;
+        if (Math.abs(a) > 0.2) seams.push(a);
+      }
+      const strips = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 2.0, 0.06), stripMat, seams.length);
+      for (let i = 0; i < seams.length; i++) {
+        const a = seams[i];
+        m.makeRotationY(-a);
+        m.setPosition(Math.sin(a) * 11.9, 4.25, -Math.cos(a) * 11.9 - 2); // high on the wall, clear of the board
+        strips.setMatrixAt(i, m);
+      }
+      strips.instanceMatrix.needsUpdate = true;
+      this._envGroup.add(strips);
+      this._shimmer.push({ mat: stripMat, base: 2.2, amp: 0.35, speed: 0.7 });
+
+      // Warm pool of gallery light under the sculpture row.
+      const pool = new THREE.Mesh(
+        new THREE.CircleGeometry(4.6, 48),
+        new THREE.MeshBasicMaterial({
+          map: this._radialTexture(), color: new THREE.Color(t.keyLight), transparent: true,
+          opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+        })
+      );
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.y = 0.006;
+      pool.renderOrder = -1;
+      this._envGroup.add(pool);
+
+      // Kinetic sculpture mobiles: slow deterministic spin (paused when hidden).
+      const count = 3;
       for (let i = 0; i < count; i++) {
         const mobile = new THREE.Group();
-        const armMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.4, metalness: 0.6 });
+        const armMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.35, metalness: 0.7 });
         const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6), armMat);
         arm.rotation.z = Math.PI / 2;
         mobile.add(arm);
         for (const side of [-0.8, 0.8]) {
           const dropGeo = new THREE.IcosahedronGeometry(0.09 + this._decorRng.float() * 0.06, 0);
           const dropMat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(t.keyLight).multiplyScalar(0.9), roughness: 0.3, metalness: 0.7,
+            color: new THREE.Color(t.keyLight).multiplyScalar(0.9), roughness: 0.22, metalness: 0.85,
           });
           const drop = new THREE.Mesh(dropGeo, dropMat);
           drop.position.set(side, -0.45 - this._decorRng.float() * 0.25, 0);
@@ -272,6 +376,66 @@ export class GalleryRenderer {
         this._envGroup.add(mobile);
       }
     }
+    if (this._motes) this._motes.material.color.set(t.keyLight);
+    this._applyShadows();
+  }
+
+  /** Grayscale terrazzo speckle (≈1.0 so the theme colour is preserved). */
+  _floorTexture() {
+    if (this._floorTex) return this._floorTex;
+    const N = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = N;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        // Two octaves of smooth noise + sparse chips.
+        const n1 = this._vnoise(x / 32, y / 32, 8), n2 = this._vnoise(x / 8, y / 8, 32);
+        let v = 0.86 + n1 * 0.08 + n2 * 0.04;
+        const chip = hash2(x, y);
+        if (chip > 0.985) v += 0.12; else if (chip < 0.012) v -= 0.1;
+        const b = Math.max(0, Math.min(255, Math.round(v * 255)));
+        const k = (y * N + x) * 4;
+        img.data[k] = img.data[k + 1] = img.data[k + 2] = b; img.data[k + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 6);
+    tex.anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.userData.shared = true;
+    this._floorTex = tex;
+    return tex;
+  }
+
+  /** Smooth value noise, tileable with period W. */
+  _vnoise(x, y, W) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const h = (p, q) => hash2(((p % W) + W) % W, ((q % W) + W) % W);
+    const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v - 0.5;
+  }
+
+  _radialTexture() {
+    if (this._radialTex) return this._radialTex;
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.userData.shared = true;
+    this._radialTex = tex;
+    return tex;
   }
 
   _tubePositions(count) {
@@ -305,12 +469,21 @@ export class GalleryRenderer {
     const positions = this._tubePositions(n);
     const t = this.theme;
 
-    const tubeGlass = new THREE.MeshPhysicalMaterial({
-      color: 0xdfe8f0, transparent: true, opacity: 0.16, roughness: 0.08,
+    // Detailed: physical glass / lacquered pedestals (reflections come from
+    // scene.environment). Plain keeps the cheaper standard materials.
+    const detailed = this.q.detail === 'detailed';
+    const tubeGlass = detailed ? new THREE.MeshPhysicalMaterial({
+      color: 0xdfe8f0, transparent: true, opacity: 0.14, roughness: 0.05,
       metalness: 0, side: THREE.DoubleSide, depthWrite: false,
+      ior: 1.5, envMapIntensity: 0.35,
+    }) : new THREE.MeshPhysicalMaterial({
+      color: 0xdfe8f0, transparent: true, opacity: 0.16, roughness: 0.08,
+      metalness: 0, side: THREE.DoubleSide, depthWrite: false, envMapIntensity: 0.35,
     });
-    const rimMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.35, metalness: 0.55 });
-    const baseMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.5, metalness: 0.3 });
+    const rimMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.3, metalness: 0.6, envMapIntensity: 0.6 });
+    const baseMat = detailed ? new THREE.MeshPhysicalMaterial({
+      color: t.pedestal, roughness: 0.45, metalness: 0.3, clearcoat: 0.5, clearcoatRoughness: 0.3, envMapIntensity: 0.4,
+    }) : new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.5, metalness: 0.3, envMapIntensity: 0.4 });
 
     for (let i = 0; i < n; i++) {
       const g = new THREE.Group();
@@ -319,12 +492,13 @@ export class GalleryRenderer {
       // Pedestal — grounding the sculpture.
       const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.5, 20), baseMat);
       ped.position.y = 0.25;
-      ped.castShadow = this.tier.shadows; ped.receiveShadow = this.tier.shadows;
+      ped.castShadow = true; ped.receiveShadow = true;
       g.add(ped);
 
       // Glass tube: open-ended cylinder + rim torus.
       const glass = new THREE.Mesh(new THREE.CylinderGeometry(TUBE_R, TUBE_R, tubeH, 24, 1, true), tubeGlass);
       glass.position.y = 0.5 + tubeH / 2;
+      glass.userData.noAO = true;
       g.add(glass);
       const rim = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R, 0.022, 10, 28), rimMat);
       rim.rotation.x = Math.PI / 2;
@@ -367,6 +541,8 @@ export class GalleryRenderer {
       this._orbMeshes.push([]);
     }
     this._tubeH = tubeH;
+    this._boardHalfW = ((n - 1) / 2) * TUBE_SPACING + 0.6;
+    this._applyShadows();
     this.syncState(state);
   }
 
@@ -389,12 +565,18 @@ export class GalleryRenderer {
   _makeOrb(colorIdx) {
     const def = this.palette[colorIdx];
     const color = new THREE.Color(def ? def.hex : '#ffffff');
-    const mat = new THREE.MeshStandardMaterial({
-      color, roughness: 0.32, metalness: 0.12,
+    // Lacquered orb: clearcoat catches crisp highlights from the environment.
+    const detailed = this.q.detail === 'detailed';
+    const mat = detailed ? new THREE.MeshPhysicalMaterial({
+      color, roughness: 0.3, metalness: 0.08,
+      clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 0.55,
+      emissive: color.clone().multiplyScalar(0.0),
+    }) : new THREE.MeshStandardMaterial({
+      color, roughness: 0.32, metalness: 0.12, envMapIntensity: 0.55,
       emissive: color.clone().multiplyScalar(0.0),
     });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(ORB_R, 24, 18), mat);
-    mesh.castShadow = this.tier.shadows;
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(ORB_R, detailed ? 32 : 24, detailed ? 24 : 18), mat);
+    mesh.castShadow = true;
     // Shape glyph reinforces color (accessibility): camera-facing sprite.
     if (def) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -591,9 +773,11 @@ export class GalleryRenderer {
 
   /** Pooled particle burst (bounded by tier; never raycastable). */
   burst(tubeIndex, colorHex, count, big) {
-    if (this.reducedMotion || this.tier.particles === 0) return;
+    const budget = PARTICLE_BUDGET[this.q.particles] || 0;
+    if (this.reducedMotion || budget === 0) return;
     const pos = this._tubeGroups[tubeIndex] ? this._tubeGroups[tubeIndex].position : new THREE.Vector3();
-    const n = Math.min(count, this._particlePool.free);
+    const alive = this._particlePool.all.length - this._particlePool.free;
+    const n = Math.min(this.q.particles === 'high' ? count : Math.ceil(count / 2), budget - alive);
     const color = new THREE.Color(colorHex || 0xffffff);
     for (let i = 0; i < n; i++) {
       const p = this._particlePool.spawn();
@@ -614,7 +798,10 @@ export class GalleryRenderer {
     this._pCol = new Float32Array(MAX * 3);
     geo.setAttribute('position', new THREE.BufferAttribute(this._pPos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(this._pCol, 3));
-    const mat = new THREE.PointsMaterial({ size: 0.05, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false });
+    const mat = new THREE.PointsMaterial({
+      size: 0.07, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false,
+      map: this._radialTexture(), blending: THREE.AdditiveBlending,
+    });
     this._points = new THREE.Points(geo, mat);
     this._points.layers.set(LAYER_FX);
     this._points.frustumCulled = false;
@@ -645,9 +832,10 @@ export class GalleryRenderer {
       this._pPos[p.i * 3 + 1] = p.pos.y;
       this._pPos[p.i * 3 + 2] = p.pos.z;
       const f = p.life / p.maxLife;
-      this._pCol[p.i * 3] = p.color.r * f;
-      this._pCol[p.i * 3 + 1] = p.color.g * f;
-      this._pCol[p.i * 3 + 2] = p.color.b * f;
+      const k = f * 1.5; // slightly over 1 so fresh sparks catch the bloom
+      this._pCol[p.i * 3] = p.color.r * k;
+      this._pCol[p.i * 3 + 1] = p.color.g * k;
+      this._pCol[p.i * 3 + 2] = p.color.b * k;
     }
     if (any) {
       this._points.geometry.attributes.position.needsUpdate = true;
@@ -803,16 +991,164 @@ export class GalleryRenderer {
     if (this._tweens.length) {
       this._tweens = this._tweens.filter((tw) => tw.update(dt) !== false);
     }
-    // Decorative motion (skipped when hidden — loop itself is stopped by UI).
-    if (!this.reducedMotion) {
+    // Ambient motion: mobiles, dust motes, light-strip shimmer. Off with reduced
+    // motion or a static background.
+    if (this._ambientOn()) {
       for (const m of this._decorSpinners) m.rotation.y += m.userData.spinSpeed * dt;
+      for (const s of this._shimmer) s.mat.emissiveIntensity = s.base + Math.sin(this._elapsed * s.speed) * s.amp;
+      this._updateMotes(dt);
     }
     // Marker pulse.
     const pulse = 0.45 + Math.sin(this._elapsed * 4) * 0.15;
     for (const m of this._markers) if (m.material.opacity > 0.05) m.material.opacity = Math.min(m.material.opacity, pulse + 0.2);
     this._updateParticles(dt);
     this._updateCamera(dt);
+    this._render();
+  }
+
+  _ambientOn() {
+    if (this.reducedMotion || this.q.background !== 'animated') return false;
+    return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  // ------------------------------------------------------------ dust motes --
+
+  _initMotes() {
+    const N = 140;
+    const pos = new Float32Array(N * 3);
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = (rnd() - 0.5) * 9;
+      pos[i * 3 + 1] = rnd() * 5;
+      pos[i * 3 + 2] = (rnd() - 0.5) * 5 - 0.8;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      size: 0.035, map: this._radialTexture(), color: 0xffe0b8, transparent: true, opacity: 0.35,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    this._motes = new THREE.Points(geo, mat);
+    this._motes.layers.set(LAYER_FX);
+    this._motes.frustumCulled = false;
+    this._motes.visible = false;
+    this._fxGroup.add(this._motes);
+  }
+
+  _updateMotes(dt) {
+    if (!this._motes || !this._motes.visible) return;
+    const a = this._motes.geometry.attributes.position;
+    const p = a.array;
+    for (let i = 0; i < p.length; i += 3) {
+      p[i + 1] += dt * (0.05 + (i % 7) * 0.008);
+      p[i] += Math.sin(this._elapsed * 0.3 + i) * dt * 0.03;
+      if (p[i + 1] > 5) p[i + 1] = 0;
+    }
+    a.needsUpdate = true;
+  }
+
+  // ---------------------------------------------------------- render path --
+
+  _pixelRatioFor() {
+    return Math.min(window.devicePixelRatio || 1, this.q.cap) * this.q.scale * this.adaptiveScale;
+  }
+
+  _render() {
+    const now = performance.now();
+    const ms = this._lastFrameAt ? Math.min(250, now - this._lastFrameAt) : 16;
+    this._lastFrameAt = now;
+    if (this._adapt(ms)) this.resize();
+    const w = this._size[0], h = this._size[1];
+    const key = this._postKey(w, h);
+    if (key !== this.postKey) {
+      this.postKey = key;
+      this._buildPost(w, h);
+    }
+    if (this.composer) {
+      try {
+        this.composer.render(ms / 1000);
+        return;
+      } catch (e) {
+        this.postFailed = true;
+        this.composer.dispose();
+        this.composer = null;
+      }
+    }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Adaptive resolution: ~90-frame average; step down when slow, up when fast. */
+  _adapt(ms) {
+    const f = this._frames;
+    f.push(ms);
+    if (f.length < 90) return false;
+    const avg = f.reduce((a, b) => a + b, 0) / f.length;
+    f.length = 0;
+    this.fps = 1000 / avg;
+    const el = document.getElementById('fps-meter');
+    if (el && !el.hidden) el.textContent = `${Math.round(this.fps)} fps · ${Math.round(this.pixelRatio * 100) / 100}×`;
+    if (!this.q.adaptive) return false;
+    const before = this.adaptiveScale;
+    if (avg > 26) this.adaptiveScale = Math.max(0.6, this.adaptiveScale - 0.1);
+    else if (avg < 14 && this.adaptiveScale < 1) this.adaptiveScale = Math.min(1, this.adaptiveScale + 0.05);
+    return before !== this.adaptiveScale;
+  }
+
+  _postKey(w, h) {
+    const g = this.q;
+    return g.post && !this.postFailed ? [g.ao, g.bloom, g.grade, g.antialias, w, h, this.pixelRatio].join('|') : 'none';
+  }
+
+  _buildPost(w, h) {
+    const g = this.q;
+    if (this.composer) this.composer.dispose();
+    this.composer = null;
+    if (!g.post || this.postFailed) return;
+    try {
+      const pr = this.pixelRatio;
+      const W = Math.max(1, Math.round(w * pr)), H = Math.max(1, Math.round(h * pr));
+      const target = new THREE.WebGLRenderTarget(W, H, {
+        type: THREE.HalfFloatType, samples: g.antialias === 'msaa' ? 4 : 0,
+      });
+      const composer = new EffectComposer(this.renderer, target);
+      composer.setPixelRatio(pr);
+      composer.setSize(w, h);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      if (g.ao !== 'off') {
+        const ao = new GTAOPass(this.scene, this.camera, W, H);
+        ao.output = GTAOPass.OUTPUT.Default;
+        ao.blendIntensity = 0.75;
+        ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
+        ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
+        // Glass, sprites and decals must not occlude: hide them from the AO G-buffer.
+        const base = ao.overrideVisibility.bind(ao);
+        ao.overrideVisibility = () => {
+          base();
+          this.scene.traverse((o) => {
+            if (o.isSprite || o.userData.noAO || (o.material && o.material.transparent)) o.visible = false;
+          });
+        };
+        composer.addPass(ao);
+      }
+      if (g.bloom === 'on') {
+        // High threshold: only emissive strips, selection glow and specular highlights bloom.
+        composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.4, 0.88));
+      }
+      if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
+      composer.addPass(new OutputPass());
+      if (g.antialias === 'smaa') composer.addPass(new SMAAPass(W, H));
+      if (g.antialias === 'fxaa') {
+        const fxaa = new ShaderPass(FXAAShader);
+        fxaa.material.uniforms.resolution.value.set(1 / W, 1 / H);
+        composer.addPass(fxaa);
+      }
+      this.composer = composer;
+    } catch (e) {
+      // Post-processing is an enhancement: render directly; the Graphics panel says so.
+      this.postFailed = true;
+      this.composer = null;
+    }
   }
 
   _tween(obj, props, dur, ease, onDone) {
@@ -844,18 +1180,114 @@ export class GalleryRenderer {
 
   // ----------------------------------------------------------- settings --
 
-  setQuality(tierName) {
-    if (!QUALITY_TIERS[tierName]) return;
-    this.tierName = tierName;
-    this.tier = QUALITY_TIERS[tierName];
-    this.renderer.shadowMap.enabled = this.tier.shadows;
+  /** Apply saved graphics settings live (see gfx.js for the model). */
+  setGraphics(saved) {
+    if (!this.renderer) return;
+    const key = JSON.stringify(saved || {});
+    if (key === this._gfxKey) return;
+    this._gfxKey = key;
+    const prev = this.q;
+    const g = resolve(saved || {}, this.detected);
+    this.q = g;
+    this.tierName = g.preset;
+    this.adaptiveScale = 1;
+    this._frames = [];
+    this.postFailed = false;
+    this.postKey = null;
+    document.body.dataset.gfxPreset = g.preset;
+    this.canvas.dataset.gfxPreset = g.preset;
+    this._fpsVisible(g.showFps);
+    this._applyShadows();
+    this._applyReflections();
+    if (this._motes) this._motes.visible = g.background === 'animated';
+    if (this._state && prev.detail !== g.detail && this.theme) {
+      const sel = this._selected, hint = this._hint;
+      this._buildEnvironment();
+      this._rebuildBoard(this._state);
+      this.select(sel);
+      if (hint) this.setHint(hint);
+      this.renderer.compile(this.scene, this.camera);
+    }
     this.resize();
-    if (this._state) this.build(this._state, this.theme, this.palette, this._decorRng);
   }
 
-  /** Dynamic render-scale: lower before ever touching simulation rate. */
+  /** What the settings panel shows: GPU, auto choice, resolved tiers, cost. */
+  graphicsInfo() {
+    const px = [Math.round(this._size[0] * this.pixelRatio), Math.round(this._size[1] * this.pixelRatio)];
+    return {
+      gpu: this.gpu || 'unknown GPU',
+      detected: this.detected,
+      resolved: this.q,
+      summary: describe(this.q, this._size[0] > 1 && this._size[1] > 1 ? px : null),
+      fps: Math.round(this.fps || 0),
+      adaptiveScale: Math.round(this.adaptiveScale * 100) / 100,
+      postFailed: !!this.postFailed,
+    };
+  }
+
+  _applyShadows() {
+    if (!this.renderer) return;
+    const size = SHADOW_MAP[this.q.shadows] || 0;
+    const on = size > 0;
+    const changed = this.renderer.shadowMap.enabled !== on;
+    this.renderer.shadowMap.enabled = on;
+    const key = this._keyLight;
+    if (key) {
+      key.castShadow = on;
+      if (on && key.shadow.mapSize.x !== size) {
+        key.shadow.mapSize.set(size, size);
+        if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }
+      }
+      // Frustum fitted tightly around the sculpture row (light space ≈ board extent).
+      const r = Math.max(2.8, (this._boardHalfW || 3) + 0.8);
+      const cam = key.shadow.camera;
+      cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
+      cam.near = 4; cam.far = 18;
+      cam.updateProjectionMatrix();
+    }
+    if (changed) this.scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+  }
+
+  _applyReflections() {
+    if (!this.renderer) return;
+    const on = this.q.reflections === 'on';
+    if (on && !this._envTex) {
+      try {
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        const room = new RoomEnvironment(this.renderer);
+        this._envTex = pmrem.fromScene(room, 0.04).texture;
+        room.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        pmrem.dispose();
+      } catch (e) {
+        this._envTex = null;
+      }
+    }
+    this.scene.environment = on ? this._envTex : null;
+    // With image-based lighting the hemisphere fill is partly redundant.
+    if (this._hemi) this._hemi.intensity = on && this._envTex ? 0.45 : 0.85;
+  }
+
+  _fpsVisible(on) {
+    let el = document.getElementById('fps-meter');
+    if (on && !el) {
+      el = document.createElement('div');
+      el.id = 'fps-meter';
+      el.setAttribute('aria-hidden', 'true');
+      el.textContent = '… fps';
+      document.body.append(el);
+    }
+    if (el) el.hidden = !on;
+  }
+
+  /** Legacy tier names map onto presets. */
+  setQuality(tierName) {
+    const map = { low: 'low', medium: 'balanced', high: 'high' };
+    this.setGraphics({ preset: map[tierName] || tierName });
+  }
+
+  /** Dynamic render-scale multiplier (the adaptive step lives in _adapt). */
   setRenderScale(scale) {
-    this._renderScale = scale;
+    this.adaptiveScale = Math.max(0.5, Math.min(1, scale));
     this.resize();
   }
 
@@ -868,7 +1300,9 @@ export class GalleryRenderer {
     if (!this.renderer) return;
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
-    const dpr = Math.min(window.devicePixelRatio || 1, this.tier.pixelRatioCap) * (this._renderScale || 1);
+    const dpr = this._pixelRatioFor();
+    this.pixelRatio = dpr;
+    this._size = [w, h];
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
     this._frameCamera(false); // aspect / chrome change may require re-fit

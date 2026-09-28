@@ -162,6 +162,58 @@ async function startJourney(page) {
   await waitActive(page);
 }
 
+// ---------- Graphics settings (through the visible Settings overlay) ----------
+const bodyPreset = (page) => page.evaluate(() => document.body.dataset.gfxPreset);
+
+async function openSettings(page) {
+  await page.click('#topbar [data-action="settings"]');
+  await page.waitForSelector('#screen-settings:not([hidden])');
+  await page.locator('#gfx-section').scrollIntoViewIfNeeded();
+}
+async function closeSettings(page) {
+  await page.locator('#screen-settings [data-action="close-overlay"]').scrollIntoViewIfNeeded();
+  await page.click('#screen-settings [data-action="close-overlay"]');
+  await page.waitForSelector('#screen-settings', { state: 'hidden' });
+}
+
+async function graphicsCheck(page, name) {
+  await openSettings(page);
+  const autoLabel = await page.locator('#set-tier option[value="auto"]').textContent();
+  if (!/Auto \(detected: Low\)/.test(autoLabel)) throw new Error('software GPU should auto-detect Low: ' + autoLabel);
+  if ((await bodyPreset(page)) !== 'low') throw new Error('auto preset should resolve to low headless');
+  await page.selectOption('#set-tier', 'low');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low');
+  await page.selectOption('#set-tier', 'high');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
+  const fromPreset = await page.locator('#gfx-cat-bloom option[value="preset"]').textContent();
+  if (!/From preset \(On\)/.test(fromPreset)) throw new Error('bloom preset label wrong: ' + fromPreset);
+  await page.selectOption('#gfx-cat-bloom', 'off');
+  await page.waitForFunction(() => window.SpectrumGame.renderer.q.bloom === 'off');
+  const summary = await page.textContent('#gfx-summary');
+  if (/Bloom/.test(summary)) throw new Error('summary still lists bloom after override: ' + summary);
+  await page.locator('#gfx-show-fps').check();
+  await page.waitForSelector('#fps-meter:not([hidden])', { state: 'attached' });
+  await closeSettings(page);
+  // survives reload
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.SpectrumGame && window.SpectrumGame.fsm === 'title');
+  if ((await bodyPreset(page)) !== 'high') throw new Error('preset did not persist across reload');
+  await openSettings(page);
+  if ((await page.inputValue('#gfx-cat-bloom')) !== 'off') throw new Error('bloom override did not persist');
+  if (!(await page.isChecked('#gfx-show-fps'))) throw new Error('show fps did not persist');
+  // choosing a preset clears overrides; restore Auto so the run stays cheap
+  await page.locator('#gfx-show-fps').uncheck();
+  await page.selectOption('#set-tier', 'auto');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low');
+  if ((await page.inputValue('#gfx-cat-bloom')) !== 'preset') throw new Error('preset change did not clear overrides');
+  // the panel fits: every graphics control is inside the viewport width
+  const overflow = await page.evaluate(() => [...document.querySelectorAll('#gfx-section select, #gfx-section input')]
+    .filter((el) => { const r = el.getBoundingClientRect(); return r.right > window.innerWidth + 1 || r.left < -1; }).map((el) => el.id));
+  if (overflow.length) throw new Error('graphics controls overflow the viewport: ' + overflow.join(','));
+  await closeSettings(page);
+  ok(`${name}: Graphics settings — Low/High presets, bloom override, fps toggle apply live and persist across reload`);
+}
+
 // ---------- one full pass ----------
 async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
@@ -169,7 +221,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() !== 'error' || browserNoise.test(m.text())) return;
+    if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
     if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
@@ -186,6 +238,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
     await page.waitForFunction(() => !!window.SpectrumGame && window.SpectrumGame.fsm === 'title');
     await page.screenshot({ path: SHOT('title', name) });
     ok(`${name}: title screen visible ("${(await page.textContent('#title-heading')).trim()}")`);
+    await graphicsCheck(page, name);
 
     // Title → Journey setup → Begin → countdown → active board.
     await startJourney(page);
@@ -273,6 +326,20 @@ async function runPass(browser, name, ctxOpts, { full }) {
       await page.click('#screen-help [data-action="close-overlay"]');
       if (helpCards < 4) throw new Error('help cards missing: ' + helpCards);
       ok(`${name}: settings + help overlays open/close (${helpCards} rule cards)`);
+
+      // Ultra in-game renders the full post chain without console noise, then back to Auto.
+      await openSettings(page);
+      await page.selectOption('#set-tier', 'ultra');
+      await closeSettings(page);
+      await page.waitForFunction(() => window.SpectrumGame.renderer.composer !== null && document.body.dataset.gfxPreset === 'ultra', null, { timeout: 10000 });
+      await page.waitForTimeout(1500);
+      const postFailed = await page.evaluate(() => window.SpectrumGame.renderer.postFailed);
+      if (postFailed) throw new Error('post-processing chain failed at Ultra');
+      await page.screenshot({ path: SHOT('ultra', name) });
+      await openSettings(page);
+      await page.selectOption('#set-tier', 'auto');
+      await closeSettings(page);
+      ok(`${name}: Ultra preset renders in-game with post-processing (no errors)`);
     } else {
       // mobile: tap a few legal tube chips via touchscreen.tap and confirm
       // the engine registers real progress.
