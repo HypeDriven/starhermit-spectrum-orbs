@@ -8,6 +8,7 @@
  */
 import { GalleryRenderer } from './render.js';
 import { mountGraphicsPanel, migrateGraphics } from './gfx-panel.js';
+import { shStrings } from './sh-strings.js';
 
 const Rules = window.SpectrumRules;
 const Content = window.SpectrumContent;
@@ -15,7 +16,7 @@ const Rng = window.SpectrumRng;
 const { GameSession } = window.SpectrumSession;
 const { Platform } = window.SpectrumPlatform;
 const { AudioEngine } = window.SpectrumAudio;
-const { UI, fmtTime } = window.SpectrumUI;
+const { UI, fmtTime, DEFAULT_BINDINGS } = window.SpectrumUI;
 
 /** Authored boards for the five interactive lessons. */
 const LEARN_BOARDS = [
@@ -30,6 +31,8 @@ class Game {
   constructor() {
     this.platform = new Platform();
     this.ui = new UI(this.platform);
+    this.sh = shStrings(navigator.language);
+    this.ui.shStrings = this.sh;
     this.audio = new AudioEngine();
     this.progression = this.platform.loadProgression();
     this.session = null;
@@ -53,6 +56,34 @@ class Game {
       onPick: (i) => this.onTubePick(i),
       onPickDown: (i) => this.onTubePickDown(i),
     });
+  }
+
+  // ------------------------------------------------------------ account --
+
+  /** StarHermit sign-in (on-platform, no token) and invite-link buttons. */
+  wireAccount() {
+    const signIn = document.getElementById('btn-signin');
+    const invite = document.getElementById('btn-invite');
+    signIn.textContent = this.sh.signIn;
+    invite.textContent = this.sh.invite;
+    this.platform.onSignedOut = () => {
+      this.ui.toast(this.sh.signedOut);
+      this.ui.updateTopbar(this.platform, this.progression);
+      this.refreshAccount();
+    };
+    this.refreshAccount();
+  }
+
+  refreshAccount() {
+    document.getElementById('btn-signin').hidden = !this.platform.canSignIn();
+    document.getElementById('btn-invite').hidden = !this.platform.inviteLink();
+  }
+
+  async copyInvite() {
+    const link = this.platform.inviteLink();
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); this.ui.toast(this.sh.copied); }
+    catch (e) { this.ui.toast(this.sh.copyFailed + ': ' + link, true); }
   }
 
   // ------------------------------------------------------------ bootstrap --
@@ -89,7 +120,18 @@ class Game {
     });
     if (this.platform.hosted) {
       this.platform.loadProfile().then(() => this.ui.updateTopbar(this.platform, this.progression));
+      // Platform settings and key bindings win over the local copies.
+      this.platform.loadRemoteSettings(this.ui.settings, DEFAULT_BINDINGS).then((changed) => {
+        if (!changed) return;
+        this.ui.settings.graphics = migrateGraphics(this.ui.settings.graphics);
+        this.ui.syncSettingsInputs();
+        this.ui.renderBindings();
+        this.ui.renderHelp();
+        if (this.gfxPanel) this.gfxPanel.refresh();
+        this.applySettings(this.ui.settings, true);
+      });
     }
+    this.wireAccount();
 
     // Returning player: offer resume of the last safe snapshot.
     const snap = this.platform.loadRoundSnapshot();
@@ -150,6 +192,8 @@ class Game {
       'replay-tutorial': () => { this.ui.closeAllOverlays(); this.startLearn(); },
       'dismiss-compat': () => { document.getElementById('compat-message').hidden = true; this.accessibleOnly = true; },
       '_settingsChanged': (s) => this.applySettings(s),
+      'sh-signin': () => this.platform.signIn(),
+      'sh-invite': () => this.copyInvite(),
     };
   }
 
@@ -657,7 +701,7 @@ class Game {
     // Rebind capture, inputs, and overlays handle their own keys.
     if (e.target.matches('input, select, textarea')) return;
     if (this.ui.overlayStack.length) {
-      if (e.key === 'Escape') { this.ui.closeOverlay(); if (this.fsm === 'paused') this.resume(); }
+      if ((this.ui.getBindings().cancel || []).includes(e.code)) { this.ui.closeOverlay(); if (this.fsm === 'paused') this.resume(); }
       return;
     }
     if (this.fsm !== 'active' && this.fsm !== 'countdown') return;

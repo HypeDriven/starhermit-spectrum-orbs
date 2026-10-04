@@ -397,3 +397,4 @@ select {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 body.reduced-motion * { animation: none !important; transition: none !important; }
+#btn-signin[hidden], #btn-invite[hidden] { display: none; }

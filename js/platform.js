@@ -1,13 +1,15 @@
 /**
  * platform.js — StarHermit host integration + local persistence.
  *
- * Works in two modes:
- *  - Hosted: launch token in the URL fragment (#game_token=<jwt>), decoded
- *    sub/game_scope, Bearer auth on every call, account profile from the
- *    platform profile endpoint, cloud saves on the platform slot, read-only
- *    platform leaderboard, launch-token refresh every 45 min.
+ * Platform calls go through window.StarHermit (starhermit-sdk.js, loaded
+ * first), which reads the launch token (#game_token / #access_token),
+ * renews it and talks to the API. Works in two modes:
+ *  - Hosted (SDK signed in): account profile, cloud save on slot
+ *    game:<slug>, settings KV, platform key bindings, read-only platform
+ *    leaderboard, invite link.
  *  - Standalone (file:// or plain static host): everything degrades to
- *    localStorage with identical interfaces. No tokens are ever persisted.
+ *    localStorage with identical interfaces and no platform calls. No
+ *    tokens are ever persisted.
  */
 (function (root, factory) {
   const rng = (typeof module === 'object' && module.exports) ? require('./rng.js') : root.SpectrumRng;
@@ -19,9 +21,11 @@
 
   const SETTINGS_VERSION = 2;
   const PROGRESSION_VERSION = 1;
-  const CLOUD_DEBOUNCE_MS = 2000;
-  const TOKEN_REFRESH_MS = 45 * 60 * 1000;
-  const TOKEN_REFRESH_RETRY_MS = 60000;
+  const SH = () => (typeof globalThis !== 'undefined' ? globalThis.StarHermit : null) || null;
+  // Settings mirrored to the platform settings KV (bindings go through the
+  // platform controls API instead).
+  const SYNCED_SETTINGS = ['audio', 'graphics', 'palette', 'camera', 'reducedMotion', 'highContrast',
+    'largeText', 'leftHanded', 'holdToSelect', 'timingAssist', 'haptics', 'tutorialDone'];
 
   const DEFAULT_SETTINGS = {
     version: SETTINGS_VERSION,
@@ -59,112 +63,38 @@
     return Rng.hashString(JSON.stringify(clone)).toString(16).padStart(8, '0');
   }
 
-  // ------------------------------------------------------------- jwt --
-
-  /** base64url-decode a JWT payload (no signature verification). */
-  function decodeJwtPayload(token) {
-    const payload = String(token).split('.')[1];
-    if (!payload) return null;
-    try {
-      const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-      return JSON.parse(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)));
-    } catch (e) { return null; }
-  }
-
-  // ------------------------------------------------------ stored zip --
-
-  // Minimal ZIP writer/reader (stored entries only, no compression).
-  const CRC_TABLE = (() => {
-    const t = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-      let c = n;
-      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-      t[n] = c >>> 0;
-    }
-    return t;
-  })();
-  function crc32(bytes) {
-    let c = 0xffffffff;
-    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  }
-  function zipStore(name, dataBytes) {
-    const enc = new TextEncoder();
-    const nameB = enc.encode(name);
-    const crc = crc32(dataBytes);
-    const out = [];
-    const u16 = (v) => out.push(v & 0xff, (v >> 8) & 0xff);
-    const u32 = (v) => out.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-    u32(0x04034b50); u16(20); u16(0); u16(0); u16(0); u16(0);
-    u32(crc); u32(dataBytes.length); u32(dataBytes.length);
-    u16(nameB.length); u16(0);
-    const head = new Uint8Array(out);
-    const cd = [];
-    const c16 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff);
-    const c32 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-    c32(0x02014b50); c16(20); c16(20); c16(0); c16(0); c16(0); c16(0);
-    c32(crc); c32(dataBytes.length); c32(dataBytes.length);
-    c16(nameB.length); c16(0); c16(0); c16(0); c16(0); c32(0); c32(0); // attrs + local-header offset
-    const cdHead = new Uint8Array(cd);
-    const cdOff = head.length + nameB.length + dataBytes.length;
-    const parts = [head, nameB, dataBytes, cdHead, nameB];
-    const eocd = [];
-    const e32 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-    const e16 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff);
-    e32(0x06054b50); e16(0); e16(0); e16(1); e16(1);
-    e32(cdHead.length + nameB.length); e32(cdOff); e16(0);
-    parts.push(new Uint8Array(eocd));
-    const total = parts.reduce((n, p) => n + p.length, 0);
-    const buf = new Uint8Array(total);
-    let o = 0;
-    for (const p of parts) { buf.set(p, o); o += p.length; }
-    return buf;
-  }
-  function unzipFirstEntry(zipBytes) {
-    // Stored single-entry reader: scan local headers for compression 0.
-    const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
-    let off = 0;
-    while (off + 30 <= zipBytes.length && dv.getUint32(off, true) === 0x04034b50) {
-      const method = dv.getUint16(off + 8, true);
-      const size = dv.getUint32(off + 18, true);
-      const nameLen = dv.getUint16(off + 26, true);
-      const extraLen = dv.getUint16(off + 28, true);
-      const dataOff = off + 30 + nameLen + extraLen;
-      if (method !== 0) throw new Error('unsupported zip entry');
-      return zipBytes.slice(dataOff, dataOff + size);
-    }
-    throw new Error('bad zip');
-  }
-  function bytesToBase64(bytes) {
-    let s = '';
-    for (let i = 0; i < bytes.length; i += 0x8000)
-      s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    return btoa(s);
-  }
   class Platform {
     constructor() {
       this.isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
-      this.launchToken = null;            // memory only — never persisted (spec §6)
-      this.userId = null;                 // JWT sub
-      this.gameScope = 'spectrum-orbs';   // JWT game_scope
-      this.hosted = false;                // true iff a launch token was read
-      this.profile = null;                // {name} from GET /api/v1/users/{sub}/profile
+      this.userId = null;                 // JWT sub (via the SDK)
+      this.gameScope = 'spectrum-orbs';   // JWT game_scope (via the SDK)
+      this.hosted = false;                // true while the SDK holds a token
+      this.profile = null;                // {name} from the platform profile
       this.onSyncChange = null;           // UI hook for the sync badge
+      this.onSignedOut = null;            // UI hook when renewal is refused
       this._timeOffset = 0;               // serverNow - clientNow
       this._timeSynced = false;
       this._syncState = 'offline';        // offline | idle | saving | synced
-      this._cloudTimer = null;
-      this._cloudRetryTimer = null;
-      this._pendingCloudDoc = null;
-      this._refreshTimer = null;
-      this._leaderboardId = undefined;    // lazily fetched; null = unavailable
-      this._nicknameCache = new Map();
+      this._settingsSynced = false;       // platform settings loaded (then local changes mirror up)
       this.storageKey = 'spectrum-orbs:v1';
-      if (this.isBrowser) {
-        this._parseLaunch();
-        if (this.hosted) {
-          this._syncState = 'idle';
-          this._scheduleTokenRefresh();
+      const sh = SH();
+      if (sh) {
+        if (!sh.token) sh.init();
+        sh.on('saved', (ok) => this._setSync(ok ? 'synced' : 'idle'));
+        sh.on('auth', (a) => {
+          const was = this.hosted;
+          this._syncFromSdk();
+          if (was && !a.signedIn) {
+            this.profile = null;
+            this._setSync('offline');
+            if (typeof this.onSignedOut === 'function') this.onSignedOut();
+          }
+        });
+        this._syncFromSdk();
+      }
+      if (this.hosted) {
+        this._syncState = 'idle';
+        if (this.isBrowser) {
           // Flush pending cloud saves when the page is backgrounded or left.
           window.addEventListener('pagehide', () => this.flushCloudSave());
           document.addEventListener('visibilitychange', () => {
@@ -174,45 +104,29 @@
       }
     }
 
-    // -------------------------------------------------------- bootstrap --
-
-    _parseLaunch() {
-      try {
-        let token = null;
-        // Real platform delivery: URL fragment, read once then stripped.
-        if (window.location.hash.length > 1) {
-          const frag = new URLSearchParams(window.location.hash.slice(1));
-          token = frag.get('game_token');
-          if (token) {
-            window.history.replaceState(null, '', window.location.pathname + window.location.search);
-          }
-        }
-        // Local-dev fallback only: query params.
-        if (!token) {
-          const params = new URLSearchParams(window.location.search);
-          token = params.get('launch') || params.get('token');
-        }
-        if (token) {
-          this.launchToken = token;
-          const data = decodeJwtPayload(token) || {};
-          if (data.sub) this.userId = String(data.sub);
-          if (data.game_scope) this.gameScope = String(data.game_scope);
-          this.hosted = true;
-        }
-        this.storageKey = this.gameScope + ':v1';
-      } catch (e) { /* malformed token: stay standalone */ }
+    _syncFromSdk() {
+      const sh = SH();
+      this.hosted = !!(sh && sh.signedIn);
+      this.userId = this.hosted && sh.userId ? String(sh.userId) : null;
+      if (sh && sh.slug) this.gameScope = String(sh.slug);
+      this.storageKey = this.gameScope + ':v1';
     }
+
+    canSignIn() { const sh = SH(); return !!(sh && sh.canSignIn()); }
+    signIn() { const sh = SH(); return !!(sh && sh.signIn()); }
+    inviteLink() { return this.hosted ? SH().inviteLink() : null; }
 
     /**
      * One-shot server-time sync (GET /api/v1/time, round-trip adjusted).
-     * Opportunistic in both modes: failure just means the local clock.
+     * Signed in only: standalone makes no own-server calls and uses the
+     * local clock. Failure also just means the local clock.
      */
     async syncTime() {
-      if (!this.isBrowser) return false;
+      if (!this.isBrowser || !this.hosted) return false;
       if (!window.location.protocol.startsWith('http')) return false;
       try {
         const t0 = Date.now();
-        const res = await fetch('/api/v1/time', { headers: this._headers(), cache: 'no-store' });
+        const res = await fetch('/api/v1/time', { headers: { Authorization: 'Bearer ' + SH().token }, cache: 'no-store' });
         const t1 = Date.now();
         if (!res.ok) return false;
         const data = await res.json();
@@ -230,84 +144,21 @@
     /** UTC date string for daily content, on platform time. */
     utcDate() { return new Date(this.now()).toISOString().slice(0, 10); }
 
-    _headers(extra) {
-      const h = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
-      if (this.launchToken) h.Authorization = 'Bearer ' + this.launchToken;
-      return h;
-    }
-
-    /** Fetch wrapper: structured errors and rate limits become recoverable UI states. */
-    async api(path, opts) {
-      if (!this.hosted) {
-        throw Object.assign(new Error('offline'), { code: 'offline' });
-      }
-      const res = await fetch(path, Object.assign({ headers: this._headers() }, opts || {}));
-      if (res.status === 429) {
-        const retry = parseInt(res.headers.get('Retry-After') || '5', 10);
-        throw Object.assign(new Error('rate-limited'), { code: 'rate-limited', retryAfter: retry });
-      }
-      let body = null;
-      try { body = await res.json(); } catch (e) { /* non-JSON */ }
-      if (!res.ok) {
-        throw Object.assign(new Error((body && body.error) || ('http-' + res.status)), {
-          code: (body && body.error) || ('http-' + res.status), status: res.status,
-        });
-      }
-      return body;
-    }
-
-    // ------------------------------------------------------------ auth --
-
-    /** Swap in a re-minted launch token before the current one expires. */
-    _scheduleTokenRefresh() {
-      if (!this.hosted) return;
-      clearTimeout(this._refreshTimer);
-      this._refreshTimer = setTimeout(() => this._refreshToken(), TOKEN_REFRESH_MS);
-    }
-    async _refreshToken() {
-      if (!this.hosted) return;
-      try {
-        const res = await fetch('/api/v1/games/' + encodeURIComponent(this.gameScope) + '/launch-token', {
-          method: 'POST', headers: this._headers(),
-        });
-        if (!res.ok) throw Object.assign(new Error('http-' + res.status), { code: 'http-' + res.status });
-        const data = await res.json().catch(() => ({}));
-        if (data && typeof data.token === 'string' && data.token) this.launchToken = data.token;
-        this._scheduleTokenRefresh();
-      } catch (e) {
-        clearTimeout(this._refreshTimer);
-        this._refreshTimer = setTimeout(() => this._refreshToken(), TOKEN_REFRESH_RETRY_MS);
-      }
-    }
-
     // ----------------------------------------------------------- profile --
 
-    /**
-     * Display name from the platform profile endpoint (never /api/v1/me,
-     * never usernames). Falls back to "Player " + id8.
-     */
+    /** Display name from the platform profile (nickname, "Player "+id fallback). */
     async loadProfile() {
-      if (!this.hosted || !this.userId) return null;
-      try {
-        const p = await this.api('/api/v1/users/' + encodeURIComponent(this.userId) + '/profile');
-        this.profile = { name: cleanNickname(p) || ('Player ' + this.userId.slice(0, 8)) };
-      } catch (e) {
-        this.profile = { name: 'Player ' + this.userId.slice(0, 8) };
-      }
+      if (!this.hosted) return null;
+      const p = await SH().profile().catch(() => null);
+      this.profile = { name: p ? p.displayName : 'Player ' + this.userId.slice(0, 6) };
       return this.profile;
     }
 
-    /** Resolve another player's id to a display nickname (cached). */
+    /** Resolve another player's id to a display nickname (cached by the SDK). */
     async nickname(userId) {
       const id = String(userId);
-      if (this._nicknameCache.has(id)) return this._nicknameCache.get(id);
-      let name = 'Player ' + id.slice(0, 8);
-      try {
-        const p = await this.api('/api/v1/users/' + encodeURIComponent(id) + '/profile');
-        name = cleanNickname(p) || name;
-      } catch (e) { /* fallback name stands */ }
-      this._nicknameCache.set(id, name);
-      return name;
+      const p = this.hosted ? await SH().profile(id).catch(() => null) : null;
+      return p ? p.displayName : 'Player ' + id.slice(0, 6);
     }
 
     // ------------------------------------------------------- persistence --
@@ -329,6 +180,50 @@
     saveSettings(settings) {
       settings.version = SETTINGS_VERSION;
       this._localSet('settings', settings);
+      // Mirror preferences once the platform's values have been applied.
+      if (this.hosted && this._settingsSynced) {
+        const patch = {};
+        for (const k of SYNCED_SETTINGS) if (settings[k] !== undefined) patch[k] = settings[k];
+        SH().patchSettings(patch);
+      }
+    }
+
+    /**
+     * Signed in: merge the platform settings KV into `settings` (platform
+     * wins) and the platform key bindings into settings.bindings. Resolves
+     * true when anything changed. Standalone: false, no network.
+     */
+    async loadRemoteSettings(settings, defaultBindings) {
+      if (!this.hosted) return false;
+      const sh = SH();
+      const [remote, bindings] = await Promise.all([
+        sh.getSettings().catch(() => ({})),
+        sh.loadBindings(defaultBindings).catch(() => null),
+      ]);
+      let changed = false;
+      for (const k of SYNCED_SETTINGS) {
+        if (remote && remote[k] !== undefined && remote[k] !== null &&
+            JSON.stringify(remote[k]) !== JSON.stringify(settings[k])) {
+          settings[k] = remote[k];
+          changed = true;
+        }
+      }
+      if (bindings && JSON.stringify(bindings) !== JSON.stringify(settings.bindings || defaultBindings)) {
+        settings.bindings = bindings;
+        changed = true;
+      }
+      this._settingsSynced = true;
+      this.saveSettings(settings);
+      return changed;
+    }
+
+    /** Persist one rebound action to the platform controls (no-op standalone). */
+    setControl(action, codes) {
+      if (this.hosted) SH().setControl(action, codes).catch(() => {});
+    }
+    /** Reset the platform controls to the starhermit.txt defaults. */
+    resetControls() {
+      if (this.hosted) SH().resetControls();
     }
 
     /** Load progression; verifies checksum; migrates versions. */
@@ -355,39 +250,15 @@
       doc.checksum = checksum(doc);
       this._localSet('progression', doc);
       if (!this.hosted) return { saved: 'local' };
-      this._pendingCloudDoc = JSON.parse(JSON.stringify(doc));
       this._setSync('saving');
-      clearTimeout(this._cloudTimer);
-      this._cloudTimer = setTimeout(() => this.flushCloudSave(), CLOUD_DEBOUNCE_MS);
+      SH().saveJSON(doc);
       return { saved: 'cloud' };
     }
 
     /** Push the pending doc to the cloud slot now (pagehide/visibilitychange). */
     async flushCloudSave() {
       if (!this.hosted) return { saved: 'local' };
-      clearTimeout(this._cloudTimer);
-      this._cloudTimer = null;
-      const doc = this._pendingCloudDoc;
-      if (!doc) return { saved: 'local' };
-      try {
-        const body = JSON.stringify({
-          dataBase64: bytesToBase64(zipStore('progression.json', new TextEncoder().encode(JSON.stringify(doc)))),
-        });
-        const res = await fetch(this._cloudSaveUrl(), { method: 'PUT', headers: this._headers(), body });
-        if (!res.ok) throw Object.assign(new Error('http-' + res.status), { code: 'http-' + res.status });
-        this._pendingCloudDoc = null;
-        this._setSync('synced');
-        return { saved: 'cloud' };
-      } catch (e) {
-        // Doc stays queued; retry quietly so a flaky network cannot lose it.
-        if (!this._cloudRetryTimer) {
-          this._cloudRetryTimer = setTimeout(() => {
-            this._cloudRetryTimer = null;
-            this.flushCloudSave();
-          }, TOKEN_REFRESH_RETRY_MS);
-        }
-        return { saved: 'local', warning: e.code || 'cloud-unavailable' };
-      }
+      return { saved: (await SH().flushSave(true)) ? 'cloud' : 'local' };
     }
 
     /**
@@ -396,23 +267,15 @@
      */
     async syncProgression(local) {
       if (!this.hosted) return { resolved: local, source: 'local' };
-      try {
-        const res = await fetch(this._cloudSaveUrl(), { headers: this._headers(), cache: 'no-store' });
-        if (res.status === 404) { this._setSync('synced'); return { resolved: local, source: 'local' }; }
-        if (!res.ok) throw Object.assign(new Error('http-' + res.status), { code: 'http-' + res.status });
-        const remote = JSON.parse(new TextDecoder().decode(unzipFirstEntry(new Uint8Array(await res.arrayBuffer()))));
-        const sane = remote && typeof remote === 'object' && remote.version === PROGRESSION_VERSION &&
-          (!remote.checksum || remote.checksum === checksum(remote));
-        if (sane && remote.updatedAt >= (local.updatedAt || 0)) {
-          this._localSet('progression', remote);
-          this._setSync('synced');
-          return { resolved: remote, source: 'cloud' };
-        }
-        this._setSync('synced');
-        return { resolved: local, source: 'local' };
-      } catch (e) {
-        return { resolved: local, source: 'local', warning: e.code || 'cloud-unavailable' };
+      const remote = await SH().loadJSON().catch(() => null);
+      this._setSync('synced');
+      const sane = remote && typeof remote === 'object' && remote.version === PROGRESSION_VERSION &&
+        (!remote.checksum || remote.checksum === checksum(remote));
+      if (sane && remote.updatedAt >= (local.updatedAt || 0)) {
+        this._localSet('progression', remote);
+        return { resolved: remote, source: 'cloud' };
       }
+      return { resolved: local, source: 'local' };
     }
 
     /** Small sync badge state: offline | idle | saving | synced. */
@@ -423,10 +286,6 @@
       const changed = this._syncState !== state;
       this._syncState = state;
       if (changed && typeof this.onSyncChange === 'function') this.onSyncChange(state);
-    }
-
-    _cloudSaveUrl() {
-      return '/api/v1/me/cloud-saves/' + encodeURIComponent(this.gameScope);
     }
 
     saveRoundSnapshot(snapshotStr) { this._localSet('round', snapshotStr); }
@@ -463,15 +322,11 @@
       return { stored: 'local', casual: true, rank: board.indexOf(record) + 1 };
     }
 
-    /** The platform's single leaderboard id for this game (null if none). */
+    /** The platform's leaderboard id for this game (null if none). */
     async leaderboardInfo() {
       if (!this.hosted) return null;
-      if (this._leaderboardId !== undefined) return this._leaderboardId;
-      try {
-        const g = await this.api('/api/v1/games/' + encodeURIComponent(this.gameScope));
-        this._leaderboardId = (g && g.leaderboardId) || null;
-      } catch (e) { this._leaderboardId = null; }
-      return this._leaderboardId;
+      const boards = await SH().leaderboards().catch(() => []);
+      return boards && boards[0] ? boards[0].id : null;
     }
 
     /**
@@ -487,11 +342,10 @@
         return { entries: this._localGet('board:' + board) || [], casual: true };
       }
       try {
-        const q = new URLSearchParams({ friendsOnly: friendsOnly ? '1' : '', page: '1', pageSize: '50' });
-        const data = await this.api('/api/v1/leaderboards/' + encodeURIComponent(leaderboardId) + '/entries?' + q.toString());
-        const raw = (data && data.entries) || [];
+        const data = await SH().leaderboardEntries(leaderboardId, { page: 1, pageSize: 50, scope: friendsOnly ? 'friends' : undefined });
+        const raw = (data && data.items) || [];
         const entries = await Promise.all(raw.map(async (e) => ({
-          player: e.player || e.nickname || (e.userId ? await this.nickname(e.userId) : 'Guest'),
+          player: e.userId ? await this.nickname(e.userId) : 'Guest',
           score: e.score,
           seed: e.seed !== undefined ? e.seed : null,
           durationMs: e.durationMs !== undefined ? e.durationMs : null,
@@ -518,10 +372,5 @@
     }
   }
 
-  function cleanNickname(p) {
-    const n = p && typeof p.nickname === 'string' ? p.nickname.trim() : '';
-    return n || null;
-  }
-
-  return { Platform, DEFAULT_SETTINGS, defaultProgression, checksum, SETTINGS_VERSION, PROGRESSION_VERSION };
+  return { Platform, SYNCED_SETTINGS, DEFAULT_SETTINGS, defaultProgression, checksum, SETTINGS_VERSION, PROGRESSION_VERSION };
 });

@@ -170,7 +170,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror.
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
 - `content`: versioned levels, themes, tutorials, validation metadata.
-- `platform`: token-aware REST adapter (fragment launch token, Bearer auth, cloud-save slot, read-only leaderboards), retries, rate-limit handling.
+- `platform`: adapter over the StarHermit SDK (`window.StarHermit`: launch token + renewal, cloud-save slot, settings KV, key bindings, read-only leaderboards) plus local persistence.
 
 No module may mutate rules state except through a validated command. Rendering consumes immutable snapshots plus interpolation data. UI state and simulation state are separate so closing a drawer cannot affect a match.
 
@@ -193,13 +193,14 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Packaging and launch
 - Ship a browser distribution with `starhermit.txt` at its root, `name=Spectrum Orbs`, and `launch=index.html`. Keep source files, secrets, design documents, and source maps outside the uploaded distribution.
-- Read the game scope from the short-lived launch token rather than hard-coding a slug. Use same-origin `/api` routes when hosted. Refresh the launch token via `POST /api/v1/games/{slug}/launch-token` on a 45-minute schedule; never persist access or launch tokens in local storage.
-- Synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
+- `starhermit-sdk.js` (unmodified copy of the canonical StarHermit SDK) loads before `js/platform.js` and `StarHermit.init()` runs inline at page load: it reads `#game_token=` (library launch) or `#access_token=` (sign-in return), strips it, takes the slug from the `game_scope` claim and renews the launch token before expiry. `js/platform.js` routes every platform call through `window.StarHermit`; if renewal is refused the game shows a localized notice, re-offers sign-in and keeps playing locally. Without a token no platform call is made; tokens are never persisted.
+- When signed in, synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset; standalone (no launch token) uses the local clock and makes no `/api` or `/ws` requests. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
 
 ### Identity, profile, presence, and preferences
-- Support guest practice locally, then offer account sign-in for durable progress. Show the account nickname from the platform profile endpoint where identity is useful and surface a small cloud-sync status (synced/saving/offline).
-- Store accessibility, audio, graphics tier, tutorial completion, camera preference, and rules options through per-game settings. Declare desktop action bindings and read player overrides; touch mappings remain responsive UI controls.
-- Cloud-save progression as a versioned, checksummed document to `/api/v1/me/cloud-saves/{gameKey}` (zip+base64, one slot, debounced with a pagehide flush); on conflict prefer the remote snapshot. Never place credentials or private chat in saves.
+- Guests play locally. On `*.starhermit.com` without a token the title menu shows **Sign in with StarHermit** (`StarHermit.signIn()`), hidden when signed in or running locally. Signed-in players see their profile nickname (fallback `Player <id prefix>`) and a cloud-sync badge in the top bar, and an **Invite a friend** menu button copies `StarHermit.inviteLink()` with a toast. These controls are localized in all 9 locales (`js/sh-strings.js`).
+- Audio, graphics, palette, camera, accessibility, hold-to-select, timing assist, haptics and tutorial completion are mirrored to the per-game settings KV on change; on start the platform values win (local values are never pushed before they are applied).
+- Keyboard actions are declared as `control.*` lines in `starhermit.txt`; at start `StarHermit.loadBindings()` applies the player's overrides to the Settings key list. Rebinding a key in Settings persists it with `setControl` (a key belongs to one action), and **Reset keys to defaults** calls `resetControls`. Keys are routed by `event.code`; Help shows the effective keys.
+- Progression is a versioned, checksummed document cloud-saved to slot `game:<slug>` via the SDK (newer remote snapshot preferred on load, debounced `saveJSON`, `flushSave(true)` on pagehide/hidden); localStorage stays the offline cache. Never place credentials or private chat in saves.
 
 ### Discovery, activity, and social layer
 - Playtime/activity tracking is host-owned — the game carries no client presence/activity endpoints. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
@@ -208,7 +209,7 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- The platform leaderboard is read-only in the client (`GET /api/v1/leaderboards/{leaderboardId}/entries` with a friends filter); personal bests keep ruleset, content version, seed, assists, and duration, stored locally and in the cloud save.
+- The platform leaderboard is read-only in the client (`StarHermit.leaderboards()` + `leaderboardEntries()`, names resolved to nicknames); personal bests keep ruleset, content version, seed, assists, and duration, stored locally and in the cloud save.
 - For globally competitive boards, score claims are validated through a lightweight authoritative script using replayable input logs and deterministic seeds; the shipped dev script (`server.js`) applies this to its own local boards.
 
 ### Sessions and transport

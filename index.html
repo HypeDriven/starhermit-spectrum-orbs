@@ -50,6 +50,8 @@
       <button class="menu-btn" data-action="play-learn">Learn to Play</button>
       <button class="menu-btn" data-action="scores">Scores &amp; Friends</button>
       <button class="menu-btn" data-action="profile">Profile &amp; Progress</button>
+      <button class="menu-btn" id="btn-signin" data-action="sh-signin" hidden>Sign in with StarHermit</button>
+      <button class="menu-btn" id="btn-invite" data-action="sh-invite" hidden>Invite a friend</button>
     </nav>
     <p class="title-foot" id="resume-note" hidden></p>
   </section>
@@ -292,6 +294,8 @@
 <script src="js/rules.js"></script>
 <script src="js/content.js"></script>
 <script src="js/session.js"></script>
+<script src="starhermit-sdk.js"></script>
+<script>StarHermit.init();</script>
 <script src="js/platform.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>

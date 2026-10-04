@@ -263,7 +263,8 @@
 
     // ---------------------------------------------------------- settings --
 
-    bindSettings(onChange) {
+ /** Push the current settings values into the Settings inputs. */
+    syncSettingsInputs() {
       const s = this.settings;
       const set = (id, val) => { const el = this.$(id); if (el) el.type === 'checkbox' ? el.checked = !!val : el.value = val; };
       set('#set-music', s.audio.music); set('#set-effects', s.audio.effects);
@@ -275,6 +276,11 @@
       set('#set-large-text', s.largeText); set('#set-left-handed', s.leftHanded);
       set('#set-hold-select', s.holdToSelect); set('#set-timing-assist', s.timingAssist);
       set('#set-haptics', s.haptics);
+    }
+
+    bindSettings(onChange) {
+      const s = this.settings;
+      this.syncSettingsInputs();
 
       const wire = (id, fn) => {
         const el = this.$(id);
@@ -319,8 +325,13 @@
           btn.textContent = 'press key…';
           const cap = (e) => {
             e.preventDefault();
+            // A key belongs to exactly one action: take it off any other.
+            for (const a of Object.keys(bindings)) {
+              if (a !== action) bindings[a] = bindings[a].filter((c) => c !== e.code);
+            }
             bindings[action] = [e.code];
             this.settings.bindings = bindings;
+            this.platform.setControl(action, [e.code]);
             document.removeEventListener('keydown', cap, true);
             this.renderBindings();
             if (this.handlers._settingsChanged) this.handlers._settingsChanged(this.settings);
@@ -330,6 +341,19 @@
         row.append(label, btn);
         list.appendChild(row);
       }
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'menu-btn';
+      reset.id = 'btn-reset-keys';
+      reset.textContent = (this.shStrings && this.shStrings.resetKeys) || 'Reset keys to defaults';
+      reset.addEventListener('click', () => {
+        this.settings.bindings = null;
+        this.platform.resetControls();
+        this.renderBindings();
+        this.renderHelp();
+        if (this.handlers._settingsChanged) this.handlers._settingsChanged(this.settings);
+      });
+      list.appendChild(reset);
     }
 
     getBindings() {
