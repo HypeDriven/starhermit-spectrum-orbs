@@ -877,23 +877,26 @@ export class GalleryRenderer {
     const W = this.container.clientWidth || 1, H = this.container.clientHeight || 1;
     let top = 0, bottom = H, left = 0, right = W;
     const host = this.container.getBoundingClientRect();
+    // rects are visual px, W/H layout px: convert (they differ under the UI zoom)
+    const k = host.width ? host.width / W : 1;
     const rectOf = (id) => {
       const el = document.getElementById(id);
       if (!el || el.hidden) return null;
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) return null;
-      return { x: r.left - host.left, y: r.top - host.top, w: r.width, h: r.height };
+      return { x: (r.left - host.left) / k, y: (r.top - host.top) / k, w: r.width / k, h: r.height / k };
     };
     const card = rectOf('tutorial-card');
     if (card) {
-      if (card.w > W * 0.55) top = Math.max(top, card.y + card.h);       // banner across the top
+      // banner across the top (wide, or centred over the middle of the board)
+      if (card.w > W * 0.55 || (card.x < W / 2 && card.x + card.w > W / 2)) top = Math.max(top, card.y + card.h);
       else if (card.x + card.w / 2 < W / 2) left = Math.max(left, card.x + card.w); // docked left
       else right = Math.min(right, card.x);                                // docked right
     }
     const status = document.getElementById('board-status');
     if (status && status.offsetHeight) {
       const r = status.getBoundingClientRect();
-      bottom = Math.min(bottom, r.top - host.top);
+      bottom = Math.min(bottom, (r.top - host.top) / k);
     }
     if (right - left < W * 0.4) { left = 0; right = W; }
     if (bottom - top < H * 0.4) { top = 0; bottom = H; }
@@ -1056,7 +1059,9 @@ export class GalleryRenderer {
   // ---------------------------------------------------------- render path --
 
   _pixelRatioFor() {
-    return Math.min(window.devicePixelRatio || 1, this.q.cap) * this.q.scale * this.adaptiveScale;
+    // the canvas sits inside the zoomed #app (layout px): multiply by the UI zoom
+    const zoom = (window.UIScale && window.UIScale.value) || 1;
+    return Math.min(window.devicePixelRatio || 1, this.q.cap) * zoom * this.q.scale * this.adaptiveScale;
   }
 
   _render() {

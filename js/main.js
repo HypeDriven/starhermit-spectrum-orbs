@@ -457,7 +457,7 @@ class Game {
       setTimeout(() => {
         if (this.fsm !== 'countdown') return;
         this.ui.announce(s);
-        this.ui.toast(s);
+        this.ui.toast(s, false, { key: 'countdown', ms: i === seq.length - 1 ? 900 : 700 });
         if (i === seq.length - 1) this.setState('active', 'countdown-complete');
       }, i * (this.ui.settings.reducedMotion ? 200 : 650));
     });

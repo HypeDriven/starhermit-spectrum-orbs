@@ -87,7 +87,9 @@
       el.hidden = false;
       this.overlayStack.push(name);
       const target = el.querySelector('.primary, button, input, select');
-      if (target) target.focus();
+      // preventScroll: a tall panel must open at its heading, not scrolled to the button
+      if (target) target.focus({ preventScroll: true });
+      for (const sc of el.querySelectorAll('.panel')) sc.scrollTop = 0;
     }
 
     closeOverlay(name) {
@@ -110,12 +112,32 @@
     announce(msg) { this.$('#live-region').textContent = msg; }
     alert(msg) { this.$('#alert-region').textContent = msg; }
 
-    toast(msg, warn) {
+    toast(msg, warn, opts) {
+      const root = this.$('#toast-root');
+      const o = opts || {};
+      // keyed toasts (countdown) replace the previous one instead of stacking
+      if (o.key) root.querySelectorAll('.toast[data-key="' + o.key + '"]').forEach((el) => el.remove());
+      this.placeToasts(root);
       const t = document.createElement('div');
       t.className = 'toast' + (warn ? ' warn' : '');
+      if (o.key) t.dataset.key = o.key;
       t.textContent = msg;
-      this.$('#toast-root').appendChild(t);
-      setTimeout(() => t.remove(), 3600);
+      root.appendChild(t);
+      setTimeout(() => t.remove(), o.ms || 3600);
+    }
+
+    // During play, lift the toasts above the board-status chips so they never
+    // cover a control (bottom is in the zoomed root's px: divide by UI zoom).
+    placeToasts(root) {
+      const game = this.$('#screen-game');
+      const status = this.$('#board-status');
+      let bottom = '';
+      if (game && !game.hidden && status && status.offsetHeight) {
+        const r = status.getBoundingClientRect();
+        const zoom = (window.UIScale && window.UIScale.value) || 1;
+        bottom = Math.max(16, (window.innerHeight - r.top) / zoom + 8) + 'px';
+      }
+      root.style.bottom = bottom;
     }
 
     invalidText(reason) { return INVALID_TEXT[reason] || 'That move is not legal.'; }
