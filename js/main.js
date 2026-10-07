@@ -927,8 +927,8 @@ class Game {
       await this.platform.saveProgression(prog);
       this.progression = this.platform.loadProgression();
 
-      // Personal-best record with replay provenance (spec §6). Platform
-      // leaderboards are read-only; this stays local + cloud-mirrored.
+      // Personal-best record with replay provenance (spec §6), local +
+      // cloud-mirrored; signed in, the total also goes to the high-score board.
       let boardText = '';
       if (won && ['daily', 'challenge', 'journey'].includes(this.mode)) {
         const board = this.mode === 'daily' ? 'daily:' + this.platform.utcDate()
@@ -961,6 +961,18 @@ class Game {
         nextLabel: nextInfo.label,
       });
       this._nextAction = nextInfo.fn;
+      const lbLine = document.getElementById('results-lb');
+      if (lbLine) {
+        lbLine.hidden = true;
+        if (won && ['daily', 'challenge', 'journey'].includes(this.mode) && this.platform.hosted) {
+          lbLine.hidden = false;
+          lbLine.textContent = this.sh.lbPosting;
+          this.platform.postHighScore(result.total).then((r) => {
+            lbLine.textContent = !r.posted ? this.sh.lbNotPosted
+              : r.rank ? this.sh.lbRank.replace('{rank}', r.rank) : this.sh.lbPosted;
+          });
+        }
+      }
       this.setState('results', 'round-end');
       this.ui.updateTopbar(this.platform, this.progression);
       this.ui.announce((won ? 'Round complete. ' : 'Round over. ') + 'Score ' + result.total + '.');

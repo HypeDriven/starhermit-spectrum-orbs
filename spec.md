@@ -171,7 +171,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror.
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
 - `content`: versioned levels, themes, tutorials, validation metadata.
-- `platform`: adapter over the StarHermit SDK (`window.StarHermit`: launch token + renewal, cloud-save slot, settings KV, key bindings, read-only leaderboards) plus local persistence.
+- `platform`: adapter over the StarHermit SDK (`window.StarHermit`: launch token + renewal, cloud-save slot, settings KV, key bindings, leaderboard reads and score submit) plus local persistence.
 
 No module may mutate rules state except through a validated command. Rendering consumes immutable snapshots plus interpolation data. UI state and simulation state are separate so closing a drawer cannot affect a match.
 
@@ -198,7 +198,7 @@ No module may mutate rules state except through a validated command. Rendering c
 - When signed in, synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset; standalone (no launch token) uses the local clock and makes no `/api` or `/ws` requests. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
 
 ### Identity, profile, presence, and preferences
-- Guests play locally. On `*.starhermit.com` without a token the title menu shows **Sign in with StarHermit** (`StarHermit.signIn()`), hidden when signed in or running locally. Signed-in players see their profile nickname (fallback `Player <id prefix>`) and a cloud-sync badge in the top bar, and an **Invite a friend** menu button copies `StarHermit.inviteLink()` with a toast. These controls are localized in all 9 locales (`js/sh-strings.js`).
+- Guests play locally. On `*.starhermit.com` without a token the title menu shows **Sign in with StarHermit** (`StarHermit.signIn()`), hidden when signed in or running locally. Signed-in players see their profile nickname (fallback `Player <id prefix>`) and a cloud-sync badge in the top bar, and an **Invite a friend** menu button copies `StarHermit.inviteLink()` with a toast. These controls and the results leaderboard line are localized in all 9 locales (`js/sh-strings.js`).
 - Audio, graphics, palette, camera, accessibility, hold-to-select, timing assist, haptics and tutorial completion are mirrored to the per-game settings KV on change; on start the platform values win (local values are never pushed before they are applied).
 - Keyboard actions are declared as `control.*` lines in `starhermit.txt`; at start `StarHermit.loadBindings()` applies the player's overrides to the Settings key list. Rebinding a key in Settings persists it with `setControl` (a key belongs to one action), and **Reset keys to defaults** calls `resetControls`. Keys are routed by `event.code`; Help shows the effective keys.
 - Progression is a versioned, checksummed document cloud-saved to slot `game:<slug>` via the SDK (newer remote snapshot preferred on load, debounced `saveJSON`, `flushSave(true)` on pagehide/hidden); localStorage stays the offline cache. Never place credentials or private chat in saves.
@@ -210,7 +210,8 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- The platform leaderboard is read-only in the client (`StarHermit.leaderboards()` + `leaderboardEntries()`, names resolved to nicknames); personal bests keep ruleset, content version, seed, assists, and duration, stored locally and in the cloud save.
+- **Leaderboard:** signed in, every won Daily, Challenge or Journey round posts its total through `StarHermit.submitScores` (a practice session whose `score-script.js` range-checks it and posts it to the `high-score` board: integer, higher is better, 0–1,000,000), and the results screen shows "Leaderboard rank: #N" (or posted / not posted) in `#results-lb`. Practice, lessons, lost rounds and standalone play post nothing and show no line. Posted totals are range-checked, not replay-validated.
+- Boards are read with `StarHermit.leaderboards()` + `leaderboardEntries()`, names resolved to nicknames; personal bests keep ruleset, content version, seed, assists, and duration, stored locally and in the cloud save.
 - For globally competitive boards, score claims are validated through a lightweight authoritative script using replayable input logs and deterministic seeds; the shipped dev script (`server.js`) applies this to its own local boards.
 
 ### Sessions and transport
@@ -219,7 +220,7 @@ No module may mutate rules state except through a validated command. Rendering c
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- Keep the authoritative script inside the distribution and declare it with `server=server.js`. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
+- The platform script is `score-script.js`, declared with `server=score-script.js` (canonical copy in the games repo's `tools/score-script.js`); `server.js` stays as the local dev server with its replay-validated local boards. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture no client analytics: the platform exposes no per-game telemetry endpoint for launch tokens, and the game sends none.
 

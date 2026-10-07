@@ -74,7 +74,7 @@ test('static index and starhermit served', async () => {
   const sh = await (await fetch(base + '/starhermit.txt')).text();
   assert.match(sh, /name=Spectrum Orbs/);
   assert.match(sh, /launch=index\.html/);
-  assert.match(sh, /server=server\.js/);
+  assert.match(sh, /server=score-script\.js/);
   const trav = await fetch(base + '/../etc/passwd');
   assert.ok([400, 403, 404].includes(trav.status));
 });

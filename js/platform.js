@@ -296,9 +296,9 @@
 
     /**
      * Personal-best record (spec §6): ruleset, content version, seed,
-     * assists, duration, replay envelope. Clients can never submit to a
-     * platform leaderboard — this stays local and cloud-mirrored; the
-     * platform board is read-only via leaderboard().
+     * assists, duration, replay envelope. This stays local and
+     * cloud-mirrored; the platform high-score board gets the total through
+     * postHighScore().
      */
     async submitScore(entry) {
       const record = {
@@ -320,6 +320,23 @@
       board.sort((a, b) => b.score - a.score);
       this._localSet('board:' + record.board, board.slice(0, 50));
       return { stored: 'local', casual: true, rank: board.indexOf(record) + 1 };
+    }
+
+    /**
+     * Post a won ranked round's total to the platform high-score board
+     * (StarHermit.submitScores → score-script.js); resolves { posted, rank }.
+     */
+    async postHighScore(total) {
+      const sh = SH();
+      if (!sh || !sh.signedIn || typeof sh.submitScores !== 'function') return { posted: false, rank: null };
+      let keys;
+      try { keys = await sh.submitScores({ 'high-score': total }); } catch (e) { return { posted: false, rank: null }; }
+      if (!keys || keys.indexOf('high-score') < 0) return { posted: false, rank: null };
+      try {
+        const r = await sh.leaderboard('high-score', { pageSize: 100 });
+        const me = ((r && r.items) || []).find((i) => i.userId === sh.userId);
+        return { posted: true, rank: me ? me.rank : null };
+      } catch (e) { return { posted: true, rank: null }; }
     }
 
     /** The platform's leaderboard id for this game (null if none). */
