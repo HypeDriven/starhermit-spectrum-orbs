@@ -6,7 +6,8 @@
  * Covers everything a game-scoped launch token may reach (wiki, 2026-10):
  *   launch:        #game_token=<jwt>[&session_id=<guid>]  (library / invite launch)
  *                  #access_token=<jwt>[&game_fragment=..]  (direct sign-in return)
- *   renewal:       POST /api/v1/games/{slug}/launch-token  (12 h chain ceiling)
+ *   renewal:       POST /api/v1/games/{slug}/launch-token  (12 h from the original launch;
+ *                  past that, or once expired, only the launcher can mint a new token)
  *   sign-in:       https://api.starhermit.com/api/v1/auth/games/{gameId}/sign-in?returnUrl=
  *   identity:      GET /api/v1/users/{id}/profile, /avatar ; GET /api/v1/me/friends
  *   game:          GET /api/v1/games/{slug}            (definition + caller stats)
@@ -56,11 +57,14 @@
       userId: null,
       slug: null,
       launchSessionId: null, // session_id from the launch fragment (invite accept)
+      launchKind: null,      // 'launcher' (#game_token) or 'sign-in' (#access_token)
+      launcherUrl: 'https://dashboard.starhermit.com/',
       inviteQuery: null,     // query string passed through a share link
       signedIn: false,
     };
     var listeners = {};
     var refreshTimer = null;
+    var renewing = null;
     var profileCache = new Map();
 
     function emit(type, value) {
@@ -124,6 +128,7 @@
       var h = new URLSearchParams(String(loc.hash || '').replace(/^#/, ''));
       var t = h.get('game_token') || h.get('access_token');
       if (t) {
+        sh.launchKind = h.get('game_token') ? 'launcher' : 'sign-in';
         sh.launchSessionId = h.get('session_id') || null;
         var restore = h.get('game_fragment');
         ['game_token', 'access_token', 'token_type', 'expires_in', 'session_id', 'game_fragment']
@@ -147,24 +152,71 @@
       refreshTimer = setT(function () { sh.refresh().catch(function () {}); }, wait);
     }
 
-    /** Re-mint the launch token (renewal chain). Signs out when refused. */
+    /**
+     * Re-mint the launch token (renewal chain); concurrent callers share one
+     * request. Resolves 'renewed' (a fresh token is in place), 'retry' (network
+     * or server error — the token may still be good, try again later) or
+     * 'relaunch' (expired, refused, or past the 12 h chain: signed out, and only
+     * the launcher or sign-in can mint a new token — see relaunch()).
+     */
+    function renew() {
+      if (renewing) return renewing;
+      if (!sh.token || !sh.slug) return Promise.resolve('relaunch');
+      var exp = sh.claims && sh.claims.exp ? sh.claims.exp * 1000 : 0;
+      // An expired token cannot authorize its own renewal.
+      if (exp && exp <= now()) { signOut('expired'); return Promise.resolve('relaunch'); }
+      renewing = raw('POST', gamePath('/launch-token')).then(function (res) {
+        if (res.status === 401 || res.status === 403) { signOut('expired'); return 'relaunch'; }
+        if (!res.ok) return 'retry';
+        return res.json().then(function (j) {
+          if (!j || !j.token) return 'retry';
+          setToken(j.token);
+          return 'renewed';
+        }, function () { return 'retry'; });
+      }, function () { return 'retry'; }).then(function (r) { renewing = null; return r; });
+      return renewing;
+    }
+    /** Renew now; resolves the new token, or null (signed out when refused). */
     sh.refresh = function () {
       if (!sh.token || !sh.slug) return Promise.resolve(null);
-      return raw('POST', gamePath('/launch-token')).then(function (res) {
-        if (res.status === 401 || res.status === 403) { signOut('expired'); return null; }
-        if (!res.ok) { retryLater(); return null; }
-        return res.json().then(function (j) {
-          if (j && j.token) setToken(j.token); else retryLater();
-          return sh.token;
-        });
-      }, function () { retryLater(); return null; });
+      return renew().then(function (r) {
+        if (r === 'retry') retryLater();
+        return r === 'renewed' ? sh.token : null;
+      });
     };
+    /**
+     * Call before reopening any socket the game manages itself (realtime, voice):
+     * a failed reconnect may be an expired token — the handshake is refused
+     * before the upgrade, so the browser reports only 1006 — and reopening the
+     * same URL can never recover. On 'renewed' build the URL again; on 'retry'
+     * back off and call this again; on 'relaunch' stop and offer relaunch().
+     */
+    sh.renewForReconnect = renew;
     function retryLater() {
       if (refreshTimer) clearT(refreshTimer);
       var exp = sh.claims && sh.claims.exp ? sh.claims.exp * 1000 : 0;
       if (exp && exp <= now()) { signOut('expired'); return; }
       refreshTimer = setT(function () { sh.refresh().catch(function () {}); }, 60e3);
     }
+
+    /**
+     * Send the player back for a fresh launch token once renewal is impossible:
+     * through sign-in when the game was opened that way, otherwise to the
+     * launcher (the StarHermit library). Inside the launcher's game frame this
+     * navigates the top window, which browsers allow only from a user gesture —
+     * call it from a click. Returns false when the navigation was refused.
+     */
+    sh.relaunch = function () {
+      if (!win) return false;
+      if (sh.launchKind === 'sign-in' && sh.signIn()) return true;
+      var top = null;
+      try { top = win.top; } catch (e) { top = null; }
+      try {
+        if (top && top !== win) top.location.href = sh.launcherUrl;
+        else win.location.assign(sh.launcherUrl);
+        return true;
+      } catch (e) { return false; }
+    };
 
     /** True when the game can offer a "Sign in with StarHermit" button. */
     sh.canSignIn = function () { return !sh.signedIn && !!(sh.gameId || hostSlug()); };
@@ -179,13 +231,14 @@
     };
 
     /**
-     * Read the launch token and start renewal. Options: { base, gameId, autoRefresh }.
+     * Read the launch token and start renewal. Options: { base, gameId, autoRefresh, launcherUrl }.
      * gameId is only needed for sign-in when not served from <id>.starhermit.com.
      * autoRefresh:false leaves renewal to a game that runs its own chain.
      */
     sh.init = function (opts) {
       opts = opts || {};
       if (opts.autoRefresh === false) sh.autoRefresh = false;
+      if (opts.launcherUrl) sh.launcherUrl = String(opts.launcherUrl);
       if (opts.base != null) sh.base = String(opts.base).replace(/\/+$/, '');
       if (opts.gameId) sh.gameId = opts.gameId;
       var t = readLaunch();
@@ -493,16 +546,33 @@
 
     /**
      * Gameplay socket with reconnect (exponential backoff, persistent-session
-     * friendly). Handlers: onGame(data), onError(msg), onPresence({userId,online}),
-     * onAchievement(data), onResumed(f), onAbandoned(f), onOpen(), onClose(code).
-     * Returns { send(data, realtime?), close(), get open() }.
+     * friendly). Every reconnect renews the launch token first (unless it was
+     * renewed since the socket opened): a failed reconnect may be an auth
+     * failure, and the same URL can never recover from that. When renewal is
+     * impossible the socket stops and onAuthLost() fires — offer relaunch().
+     * Handlers: onGame(data), onError(msg), onPresence({userId,online}),
+     * onAchievement(data), onResumed(f), onAbandoned(f), onOpen(), onClose(code),
+     * onAuthLost(). Returns { send(data, realtime?), close(), get open() }.
      */
     sh.connect = function (sessionId, handlers, opts) {
       handlers = handlers || {}; opts = opts || {};
-      var ws = null, closed = false, delay = 1000, timer = null, conn;
+      var ws = null, closed = false, delay = 1000, timer = null, usedToken = null, conn;
+      function later(fn) { timer = setT(fn, delay); delay = Math.min(delay * 2, 30000); }
+      function reconnect() {
+        timer = null;
+        if (closed) return;
+        var renewed = sh.token && sh.token !== usedToken ? Promise.resolve('renewed') : renew();
+        renewed.then(function (r) {
+          if (closed) return;
+          if (r === 'renewed') open();
+          else if (r === 'retry') later(reconnect);
+          else { closed = true; handlers.onAuthLost && handlers.onAuthLost(); }
+        });
+      }
       function open() {
         if (closed || !sh.token || !WS) return;
-        ws = new WS(wsUrl('/ws/v1/games', { sessionId: sessionId, build: opts.build, access_token: sh.token }));
+        usedToken = sh.token;
+        ws = new WS(wsUrl('/ws/v1/games', { sessionId: sessionId, build: opts.build, access_token: usedToken }));
         ws.onopen = function () { delay = 1000; handlers.onOpen && handlers.onOpen(); };
         ws.onmessage = function (ev) {
           var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -518,8 +588,7 @@
         ws.onclose = function (ev) {
           handlers.onClose && handlers.onClose(ev.code);
           if (closed || ev.code === 1000 || ev.code === 4403 || ev.code === 4404) return;
-          timer = setT(open, delay);
-          delay = Math.min(delay * 2, 30000);
+          later(reconnect);
         };
       }
       open();
