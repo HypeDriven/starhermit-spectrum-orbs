@@ -531,6 +531,38 @@
     sh.invites = function () { return g('/invites', { incoming: [], outgoing: [] }); };
     sh.acceptInvite = function (id) { return sh.api(gamePath('/invites/' + encodeURIComponent(id) + '/accept'), { method: 'POST' }); };
     sh.declineInvite = function (id) { return soft(sh.api(gamePath('/invites/' + encodeURIComponent(id) + '/decline'), { method: 'POST' }), null); };
+    /**
+     * Post a finished run's results to the game's leaderboards: { boardKey: number }.
+     * Opens a practice session and sends {type:'result', scores} to the game's
+     * score script (tools/score-script.js), which range-checks and posts them.
+     * Resolves the accepted board keys ([] when signed out or on failure); emits
+     * 'scores' with the same list. Never rejects.
+     */
+    sh.submitScores = function (scores, opts) {
+      opts = opts || {};
+      if (!sh.token || !sh.slug || !WS || !scores) return Promise.resolve([]);
+      return sh.startAiSession().then(function (s) {
+        if (!s || !s.sessionId) return [];
+        return new Promise(function (resolve) {
+          var done = false, conn, timer;
+          function finish(list) {
+            if (done) return;
+            done = true; clearT(timer);
+            if (conn) conn.close();
+            emit('scores', list);
+            resolve(list);
+          }
+          timer = setT(function () { finish([]); }, opts.timeoutMs || 15000);
+          conn = sh.connect(s.sessionId, {
+            onOpen: function () { conn.send({ type: 'result', scores: scores }); },
+            onGame: function (d) { if (d && d.type === 'result-ack') finish(d.accepted || []); },
+            onError: function () { finish([]); },
+            onAbandoned: function () { finish([]); },
+            onAuthLost: function () { finish([]); },
+          });
+        });
+      }, function () { emit('scores', []); return []; });
+    };
     sh.myReplays = function (limit) { return g('/replays/mine?limit=' + (limit || 10), []); };
     sh.getReplay = function (id) { return g('/replays/' + encodeURIComponent(id), null); };
 
