@@ -17,7 +17,8 @@
  *   leaderboards:  GET /api/v1/games/{slug}/leaderboards, /api/v1/leaderboards/{id}/entries
  *   sessions:      sessions/mine, sessions/{id}, sessions/ai
  *   matchmaking:   queues, matchmaking (POST ?queues=, GET, DELETE)
- *   invites:       invites (POST {toUserId}, GET), invites/{id}/accept|decline ; share link
+ *   invites:       invites (POST {toUserId[, sessionId]}, GET), invites/{id}/accept|decline ; share link
+ *                  (sessionId = invite into that running session; accept then joins it)
  *   replays:       replays/mine, replays/{id}
  *   gameplay WS:   /ws/v1/games?sessionId=&access_token=   ({type:'cmd',data})
  *   chat:          /api/v1/chat/conversations/{id}/messages (REST + polling only)
@@ -322,22 +323,51 @@
     function savePath() { return '/api/v1/me/cloud-saves/' + encodeURIComponent('game:' + sh.slug); }
     /** { exists, sizeBytes, updatedAt } or null. */
     sh.saveInfo = function () { return sh.slug ? soft(sh.api(savePath() + '/info'), null) : Promise.resolve(null); };
+    // 'unknown' until the first read, then 'ok' or 'failed'. A failed read is
+    // not an empty slot, so writes stay blocked until the slot is known.
+    var saveLoad = 'unknown';
     /** The saved string (null when none / signed out). Checks /info first so an
-     *  empty slot never produces a 404 in the console. */
+     *  empty slot never produces a 404 in the console. A network/server error
+     *  also resolves null, but sets saveLoadFailed() and emits 'saveerror'. */
     sh.loadSave = function () {
       if (!sh.slug || !sh.token) return Promise.resolve(null);
-      return soft(sh.api(savePath() + '/info').then(function (info) {
+      return sh.api(savePath() + '/info').then(function (info) {
         // The platform answers {exists:false} for an empty slot; only an
         // unexpected missing /info falls through to the direct read.
         if (info && info.exists === false) return null;
         return sh.api(savePath(), { bytes: true });
       }).then(function (bytes) {
         return bytes ? unzip(bytes).then(function (d) { return new TextDecoder().decode(d); }) : null;
-      }), null);
+      }).then(function (text) {
+        saveLoad = 'ok';
+        return text;
+      }, function () {
+        saveLoad = 'failed';
+        emit('saveerror', { op: 'load' });
+        return null;
+      });
     };
-    /** Write the save slot (string; last write wins). Resolves true on success. */
+    /** True when the last cloud-save read failed (as opposed to an empty slot). */
+    sh.saveLoadFailed = function () { return saveLoad === 'failed'; };
+    /**
+     * Write the save slot (string; last write wins). Resolves true on success.
+     * After a failed read, a write goes through only once /info confirms the
+     * slot is empty; otherwise it resolves false (emits 'saved' false and
+     * 'saveerror'), so a stale local copy never overwrites a newer cloud save
+     * the game could not see. A later successful loadSave() lifts the block.
+     */
     sh.writeSave = function (text, opts) {
       if (!sh.token || !sh.slug) return Promise.resolve(false);
+      if (saveLoad === 'failed') {
+        return sh.api(savePath() + '/info').then(function (info) {
+          return !!(info && info.exists === false);
+        }, function () { return false; }).then(function (empty) {
+          if (empty) { saveLoad = 'ok'; return sh.writeSave(text, opts); }
+          emit('saveerror', { op: 'write', blocked: true });
+          emit('saved', false);
+          return false;
+        });
+      }
       var data = zip('save.json', new TextEncoder().encode(String(text)));
       return sh.api(savePath(), { method: 'PUT', body: { dataBase64: b64(data) }, keepalive: opts && opts.keepalive })
         .then(function () { emit('saved', true); return true; }, function () { emit('saved', false); return false; });
@@ -437,7 +467,14 @@
       p.stop = function () { stopped = true; };
       return p;
     };
-    sh.sendInvite = function (toUserId) { return sh.api(gamePath('/invites'), { method: 'POST', body: { toUserId: toUserId } }); };
+    // With a sessionId the friend is invited into that running session (one you are playing in);
+    // accepting admits them to it, if the game takes players mid-match. Without one, accepting
+    // starts a new session for the two of you.
+    sh.sendInvite = function (toUserId, sessionId) {
+      var body = { toUserId: toUserId };
+      if (sessionId) body.sessionId = sessionId;
+      return sh.api(gamePath('/invites'), { method: 'POST', body: body });
+    };
     sh.invites = function () { return g('/invites', { incoming: [], outgoing: [] }); };
     sh.acceptInvite = function (id) { return sh.api(gamePath('/invites/' + encodeURIComponent(id) + '/accept'), { method: 'POST' }); };
     sh.declineInvite = function (id) { return soft(sh.api(gamePath('/invites/' + encodeURIComponent(id) + '/decline'), { method: 'POST' }), null); };
