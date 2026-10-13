@@ -1077,7 +1077,7 @@ export class GalleryRenderer {
     }
     if (this.composer) {
       try {
-        this.composer.render(ms / 1000);
+        (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(ms / 1000)) : this.composer.render(ms / 1000));
         return;
       } catch (e) {
         this.postFailed = true;
@@ -1085,7 +1085,7 @@ export class GalleryRenderer {
         this.composer = null;
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(this.renderer, () => this.renderer.render(this.scene, this.camera)) : this.renderer.render(this.scene, this.camera));
   }
 
   /** Adaptive resolution: ~90-frame average; step down when slow, up when fast. */

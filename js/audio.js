@@ -53,7 +53,7 @@
         const mk = () => { const g = this.ctx.createGain(); g.connect(this.master); return g; };
         this.master = this.ctx.createGain();
         this.master.connect(this.ctx.destination);
-        for (const name of ['music', 'effects', 'ambience', 'voice']) this.buses[name] = mk();
+        for (const name of ['music', 'effects', 'ambience', 'voice']) this.buses[name] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(mk(), name) : mk());
         this._applyVolumes();
         this._started = true;
       } catch (e) { /* audio unavailable: game stays fully playable */ }
@@ -77,7 +77,7 @@
     _blip(bus, freq, dur, type, gain, slideTo) {
       if (!this._started) return;
       const t = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
+      const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), bus) : this.ctx.createOscillator());
       const g = this.ctx.createGain();
       osc.type = type || 'sine';
       osc.frequency.setValueAtTime(freq * this._variant(), t);
@@ -96,7 +96,7 @@
       const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const data = buf.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const src = this.ctx.createBufferSource();
+      const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), bus) : this.ctx.createBufferSource());
       src.buffer = buf;
       const f = this.ctx.createBiquadFilter();
       f.type = 'bandpass'; f.frequency.value = filterFreq || 2000; f.Q.value = 0.8;
@@ -124,7 +124,7 @@
     _playSample(name, bus) {
       const entry = this._sampleCache.get(name);
       if (entry && entry.buffer) {
-        const src = this.ctx.createBufferSource();
+        const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), bus) : this.ctx.createBufferSource());
         src.buffer = entry.buffer;
         src.connect(this.buses[bus] || this.buses.effects);
         src.start();
@@ -169,10 +169,10 @@
       const theme = { atrium: 'dawn', verdant: 'garden', midnight: 'night', ember: 'hearth', porcelain: 'loft' }[themeKey] || 'dawn';
       const base = baseFreqs[theme];
       const mkPad = (freq, detune, gain) => {
-        const osc = this.ctx.createOscillator();
+        const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), null) : this.ctx.createOscillator());
         osc.type = 'sine'; osc.frequency.value = freq; osc.detune.value = detune;
         const g = this.ctx.createGain(); g.gain.value = gain;
-        const lfo = this.ctx.createOscillator(); lfo.frequency.value = 0.07 + detune * 0.001;
+        const lfo = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), null) : this.ctx.createOscillator()); lfo.frequency.value = 0.07 + detune * 0.001;
         const lfoG = this.ctx.createGain(); lfoG.gain.value = gain * 0.5;
         lfo.connect(lfoG); lfoG.connect(g.gain);
         osc.connect(g); g.connect(this.buses.ambience);
