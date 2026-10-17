@@ -37,6 +37,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/spectrum-orbs-e2e-${stage}-${vp}.png`;
@@ -206,8 +207,88 @@ async function graphicsCheck(page, name) {
 }
 
 // ---------- one full pass ----------
+// ---------- Language + Report a problem (signed in against a stubbed StarHermit API) ----------
+// Mid-round: Automatic follows the account's preferredLanguage (fr-CA); choosing
+// Italian in Settings relabels the open overlay, the rails, the HUD and the board
+// mirror in place (the round keeps running) and saves ui.language; Report a
+// problem posts to /reports. The mobile pass also checks German at 390 px.
+async function languageFlow(page, name, state) {
+  const vw = page.viewportSize().width;
+  state.allowApi = true;
+  const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+  try {
+    await page.goto('about:blank');
+    await page.goto(BASE + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+    await page.waitForFunction(() => window.SpectrumGame && window.SpectrumGame.fsm === 'title' && document.documentElement.lang === 'fr-CA', null, { timeout: 15000 });
+    const play = (await page.textContent('#screen-title [data-action="play-journey"]')).trim();
+    if (play !== 'Jouer') throw new Error(`${name}: title not in French: "${play}"`);
+    await startJourney(page);
+    const moves0 = (await readState(page)).moves;
+    await page.click('#topbar [data-action="settings"]');
+    await page.waitForSelector('#screen-settings:not([hidden])');
+    const choice = page.locator('#screen-settings [data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    const autoLabel = await choice.locator('option').first().textContent();
+    if (autoLabel !== 'Automatique — Français (Canada)') throw new Error(`${name}: Automatic label not resolved: "${autoLabel}"`);
+    if ((await page.locator('[data-game-language="choice"]').count()) !== 1) throw new Error(`${name}: expected exactly one language selector`);
+    const bb = await choice.boundingBox();
+    if (!bb || bb.x < 0 || bb.x + bb.width > vw + 1) throw new Error(`${name}: language select cut off (${JSON.stringify(bb)})`);
+    await choice.selectOption('it-IT');
+    await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]')?.textContent || ''));
+    if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error(`${name}: ui.language not saved: ${JSON.stringify(calls.settings)}`);
+    const checks = await page.evaluate(() => ({
+      heading: document.getElementById('settings-heading').textContent.trim(),
+      actions: document.querySelector('#rail-right .rail-heading').textContent.trim(),
+      objective: document.querySelector('#rail-left .rail-heading').textContent.trim(),
+      chip: document.querySelector('#board-status [data-tube]')?.getAttribute('aria-label') || '',
+      gfx: document.querySelector('#gfx-mount label')?.textContent.trim() || '',
+      fsm: window.SpectrumGame.fsm,
+    }));
+    if (checks.heading !== 'Impostazioni' || checks.actions !== 'Azioni' || checks.objective !== 'Obiettivo') throw new Error(`${name}: static text not re-rendered: ${JSON.stringify(checks)}`);
+    if (!/^Tubo 1:/.test(checks.chip)) throw new Error(`${name}: board mirror not re-rendered: ${checks.chip}`);
+    if (!/^Qualità/.test(checks.gfx)) throw new Error(`${name}: Graphics panel not re-rendered: ${checks.gfx}`);
+    if (checks.fsm !== 'active' || (await readState(page)).moves !== moves0) throw new Error(`${name}: language change disturbed the round`);
+    await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+    await page.fill('[data-game-report="title"]', 'Test report');
+    await page.click('[data-game-report="send"]');
+    await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]')?.textContent || ''));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error(`${name}: report not posted`);
+    await page.screenshot({ path: SHOT('language', name) });
+    if (vw < 500) {
+      await choice.selectOption('de-DE');
+      await page.waitForFunction(() => document.documentElement.lang === 'de-DE');
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: SHOT('settings-de', name) });
+      await closeSettings(page);
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: SHOT('game-de', name) });
+      const layout = await page.evaluate(() => {
+        const rects = [...document.querySelectorAll('#topbar .topbar-status > *')].filter((e) => e.offsetWidth && !e.hidden).map((e) => e.getBoundingClientRect());
+        let overlap = false;
+        for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+          const a = rects[i], b = rects[j];
+          if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) overlap = true;
+        }
+        return { overflow: document.documentElement.scrollWidth - window.innerWidth, overlap };
+      });
+      if (layout.overflow > 1) throw new Error(`${name}: German layout overflows by ${layout.overflow}px`);
+      if (layout.overlap) throw new Error(`${name}: top-bar chips overlap`);
+      await openSettings(page);
+    }
+    await choice.selectOption('auto');
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    await closeSettings(page);
+    ok(`${name}: Language — Automatic resolved to fr-CA, Italian relabelled the round live and saved ui.language, report posted`);
+  } finally {
+    await page.unroute(/\/api\/v1\//);
+    state.allowApi = false;
+  }
+}
+
 async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
+  const state = { allowApi: false };
   const context = await browser.newContext(ctxOpts);
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -223,7 +304,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
   });
   page.on('request', (req) => {
     const u = new URL(req.url());
-    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
+    if (!state.allowApi && u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
   });
 
   try {
@@ -378,6 +459,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
       await page.screenshot({ path: SHOT('mobile-play', name) });
       ok(`${name}: started journey and made ${taps} real moves via touchscreen.tap`);
     }
+    await languageFlow(page, name, state);
   } finally {
     await context.close();
   }

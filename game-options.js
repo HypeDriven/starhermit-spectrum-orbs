@@ -399,12 +399,12 @@
   // this API accordingly. The browser always loads it before those modules.
 
   const TEXT = {
-    en: ['Sound', 'Master volume', 'Music volume', 'Sound effects volume', 'UI volume', 'Mute', 'Maximum concurrent sounds', 'Auto (detected: {n})', 'Custom', 'Maximum frame rate', 'Auto (refresh rate)', 'Custom FPS', 'Effective limit: {n} (maximum 64)', 'Graphics'],
-    es: ['Sonido', 'Volumen general', 'Volumen de música', 'Volumen de efectos', 'Volumen de interfaz', 'Silenciar', 'Máximo de sonidos simultáneos', 'Automático (detectado: {n})', 'Personalizado', 'Frecuencia máxima de fotogramas', 'Automática (frecuencia de pantalla)', 'FPS personalizados', 'Límite efectivo: {n} (máximo 64)', 'Gráficos'],
-    de: ['Sound', 'Gesamtlautstärke', 'Musiklautstärke', 'Effektlautstärke', 'Menülautstärke', 'Stummschalten', 'Maximale gleichzeitige Klänge', 'Auto (erkannt: {n})', 'Benutzerdefiniert', 'Maximale Bildrate', 'Auto (Bildschirmfrequenz)', 'Eigene FPS', 'Effektives Limit: {n} (maximal 64)', 'Grafik'],
-    fr: ['Son', 'Volume général', 'Volume de la musique', 'Volume des effets', 'Volume de l’interface', 'Couper le son', 'Nombre maximal de sons simultanés', 'Auto (détecté : {n})', 'Personnalisé', 'Fréquence d’images maximale', 'Auto (fréquence de l’écran)', 'FPS personnalisés', 'Limite effective : {n} (maximum 64)', 'Graphismes'],
-    pt: ['Som', 'Volume geral', 'Volume da música', 'Volume dos efeitos', 'Volume da interface', 'Silenciar', 'Máximo de sons simultâneos', 'Automático (detectado: {n})', 'Personalizado', 'Taxa máxima de quadros', 'Automática (taxa da tela)', 'FPS personalizados', 'Limite efetivo: {n} (máximo 64)', 'Gráficos'],
-    it: ['Audio', 'Volume generale', 'Volume della musica', 'Volume degli effetti', 'Volume dell’interfaccia', 'Silenzia', 'Numero massimo di suoni simultanei', 'Auto (rilevati: {n})', 'Personalizzato', 'Frequenza massima dei fotogrammi', 'Auto (frequenza dello schermo)', 'FPS personalizzati', 'Limite effettivo: {n} (massimo 64)', 'Grafica'],
+    en: ['Sound', 'Master volume', 'Music volume', 'Sound effects volume', 'UI volume', 'Mute', 'Maximum concurrent sounds', 'Auto (detected: {n})', 'Custom', 'Maximum frame rate', 'Auto (refresh rate)', 'Custom FPS', 'Effective limit: {n} (maximum 64)', 'Graphics', 'Report a problem', 'What went wrong?', 'Details (optional)', 'Send report', 'Sending…', 'Report sent. Thank you!', 'Could not send the report. Try again later.', 'Daily report limit reached. Try again tomorrow.'],
+    es: ['Sonido', 'Volumen general', 'Volumen de música', 'Volumen de efectos', 'Volumen de interfaz', 'Silenciar', 'Máximo de sonidos simultáneos', 'Automático (detectado: {n})', 'Personalizado', 'Frecuencia máxima de fotogramas', 'Automática (frecuencia de pantalla)', 'FPS personalizados', 'Límite efectivo: {n} (máximo 64)', 'Gráficos', 'Informar de un problema', '¿Qué ha fallado?', 'Detalles (opcional)', 'Enviar informe', 'Enviando…', 'Informe enviado. ¡Gracias!', 'No se pudo enviar el informe. Inténtalo más tarde.', 'Límite diario de informes alcanzado. Inténtalo mañana.'],
+    de: ['Sound', 'Gesamtlautstärke', 'Musiklautstärke', 'Effektlautstärke', 'Menülautstärke', 'Stummschalten', 'Maximale gleichzeitige Klänge', 'Auto (erkannt: {n})', 'Benutzerdefiniert', 'Maximale Bildrate', 'Auto (Bildschirmfrequenz)', 'Eigene FPS', 'Effektives Limit: {n} (maximal 64)', 'Grafik', 'Problem melden', 'Was ist schiefgelaufen?', 'Details (optional)', 'Bericht senden', 'Wird gesendet …', 'Bericht gesendet. Danke!', 'Bericht konnte nicht gesendet werden. Bitte später erneut versuchen.', 'Tageslimit für Berichte erreicht. Bitte morgen erneut versuchen.'],
+    fr: ['Son', 'Volume général', 'Volume de la musique', 'Volume des effets', 'Volume de l’interface', 'Couper le son', 'Nombre maximal de sons simultanés', 'Auto (détecté : {n})', 'Personnalisé', 'Fréquence d’images maximale', 'Auto (fréquence de l’écran)', 'FPS personnalisés', 'Limite effective : {n} (maximum 64)', 'Graphismes', 'Signaler un problème', 'Qu’est-ce qui n’a pas fonctionné ?', 'Détails (facultatif)', 'Envoyer le signalement', 'Envoi…', 'Signalement envoyé. Merci !', 'Impossible d’envoyer le signalement. Réessayez plus tard.', 'Limite quotidienne de signalements atteinte. Réessayez demain.'],
+    pt: ['Som', 'Volume geral', 'Volume da música', 'Volume dos efeitos', 'Volume da interface', 'Silenciar', 'Máximo de sons simultâneos', 'Automático (detectado: {n})', 'Personalizado', 'Taxa máxima de quadros', 'Automática (taxa da tela)', 'FPS personalizados', 'Limite efetivo: {n} (máximo 64)', 'Gráficos', 'Relatar um problema', 'O que deu errado?', 'Detalhes (opcional)', 'Enviar relato', 'Enviando…', 'Relato enviado. Obrigado!', 'Não foi possível enviar o relato. Tente novamente mais tarde.', 'Limite diário de relatos atingido. Tente novamente amanhã.'],
+    it: ['Audio', 'Volume generale', 'Volume della musica', 'Volume degli effetti', 'Volume dell’interfaccia', 'Silenzia', 'Numero massimo di suoni simultanei', 'Auto (rilevati: {n})', 'Personalizzato', 'Frequenza massima dei fotogrammi', 'Auto (frequenza dello schermo)', 'FPS personalizzati', 'Limite effettivo: {n} (massimo 64)', 'Grafica', 'Segnala un problema', 'Che cosa non ha funzionato?', 'Dettagli (facoltativi)', 'Invia segnalazione', 'Invio…', 'Segnalazione inviata. Grazie!', 'Impossibile inviare la segnalazione. Riprova più tardi.', 'Limite giornaliero di segnalazioni raggiunto. Riprova domani.'],
   };
   let nextId = 0;
   const panels = new Set();
@@ -415,6 +415,12 @@
     return values.some(value => /^en(?:[-_]|$)/.test(value)) && values.some(value => /^es(?:[-_]|$)/.test(value));
   }
   function language() {
+    // Games set <html lang> to the locale they render, including a ?lang= QA override the
+    // resolver doesn't know about, so follow it once a GameLanguage is registered.
+    if (root.GameLanguage && typeof root.GameLanguage.locale === 'function') {
+      const shown = String(doc.documentElement.lang || '').toLowerCase().split('-')[0];
+      return TEXT[shown] ? shown : String(root.GameLanguage.locale()).toLowerCase().split('-')[0];
+    }
     const choice = [...doc.querySelectorAll('select')].find(node => localeSelect(node) && /^(en|es|de|fr|pt|it)(?:[-_]|$)/i.test(node.value));
     const value = localeOverride || choice?.value || (doc.documentElement.lang && !/^en(?:[-_]|$)/i.test(doc.documentElement.lang) ? doc.documentElement.lang : root.navigator.language || 'en');
     return String(value).toLowerCase().split(/[-_]/)[0];
@@ -462,6 +468,10 @@
     mode.addEventListener('change', () => setFps(mode.value === 'auto' ? 0 : Number(limit.value) || 60));
     limit.addEventListener('change', () => { if (limit.checkValidity() && Number.isInteger(Number(limit.value))) setFps(Number(limit.value)); else { limit.reportValidity(); refreshPanels(); } });
     host.append(fps);
+    // Language: shown when the game registered a StarHermitLanguage instance (sh-language.js).
+    const languageSection = doc.createElement('section'); languageSection.className = 'game-options-controls game-options-language'; languageSection.dataset.settingsSection = 'language'; languageSection.hidden = true;
+    languageSection.addEventListener('keydown', keepControlKeys);
+    host.append(languageSection);
     const sound = doc.createElement('section'); sound.className = 'game-options-controls game-options-sound'; sound.dataset.settingsSection = 'sound';
     sound.addEventListener('keydown', keepControlKeys);
     const heading = doc.createElement('h3'); heading.textContent = t[0]; sound.append(heading);
@@ -482,8 +492,54 @@
     count.addEventListener('change', () => { if (count.checkValidity() && Number.isInteger(Number(count.value))) setAudio({ maxConcurrentSounds: Number(count.value) }); else { count.reportValidity(); refreshPanels(); } });
     // Keep Sound inside the same scrollable options area and focus trap.
     host.append(sound);
-    panels.add({ host, sound, heading, fps, mode, limit, limitRow, sliders, mute, sounds, count, countRow, summary });
+    // In-game bug reports through the StarHermit reports API (signed-in players only).
+    const report = doc.createElement('section'); report.className = 'game-options-controls game-options-report'; report.dataset.settingsSection = 'report';
+    report.addEventListener('keydown', keepControlKeys);
+    const reportHeading = doc.createElement('h3'); reportHeading.textContent = t[14]; report.append(reportHeading);
+    const reportTitle = doc.createElement('input'); reportTitle.type = 'text'; reportTitle.maxLength = 200; reportTitle.required = true; reportTitle.dataset.gameReport = 'title';
+    addRow(report, 15, reportTitle);
+    const reportDetails = doc.createElement('textarea'); reportDetails.rows = 3; reportDetails.maxLength = 4000; reportDetails.dataset.gameReport = 'details';
+    addRow(report, 16, reportDetails);
+    const reportSend = doc.createElement('button'); reportSend.type = 'button'; reportSend.className = 'game-options-report-send'; reportSend.dataset.gameReport = 'send'; reportSend.textContent = t[17];
+    const reportStatus = doc.createElement('p'); reportStatus.className = 'game-options-summary'; reportStatus.setAttribute('role', 'status'); reportStatus.dataset.gameReport = 'status';
+    report.append(reportSend, reportStatus);
+    reportSend.addEventListener('click', () => sendReport(reportTitle, reportDetails, reportSend, reportStatus));
+    host.append(report);
+    panels.add({ languageSection, host, sound, heading, fps, mode, limit, limitRow, sliders, mute, sounds, count, countRow, summary, report, reportHeading, reportSend });
     refreshPanels();
+  }
+  function mountLanguage(panel) {
+    const lang = root.GameLanguage;
+    if (!lang || !lang.panel || typeof lang.bindSelect !== 'function') { panel.languageSection.hidden = true; return; }
+    if (panel.language === lang) return;
+    panel.unbindLanguage?.(); panel.language = lang; panel.languageSection.textContent = '';
+    const heading = doc.createElement('h3');
+    const control = doc.createElement('select'); control.dataset.gameLanguage = 'choice';
+    const label = row(panel.languageSection, '', control);
+    const status = doc.createElement('p'); status.className = 'game-options-summary'; status.setAttribute('role', 'status'); status.dataset.gameLanguage = 'status';
+    panel.languageSection.prepend(heading); panel.languageSection.append(status);
+    const unbind = lang.bindSelect(control, status);
+    const relabel = () => { const t = lang.text(); heading.textContent = t[5]; label.firstElementChild.textContent = t[6]; };
+    const off = lang.on(relabel); relabel();
+    panel.unbindLanguage = () => { unbind(); off(); };
+    panel.languageSection.hidden = false;
+  }
+  async function sendReport(title, details, button, status) {
+    const t = strings();
+    if (!title.value.trim()) { title.reportValidity(); return; }
+    if (!sdk?.signedIn || typeof sdk.reportBug !== 'function') return;
+    button.disabled = true; status.textContent = t[18];
+    const context = { language: doc.documentElement.lang || root.navigator.language, viewport: `${root.innerWidth}x${root.innerHeight}`, dpr: root.devicePixelRatio, maxFps, audio: { muted: audio.muted, limit: audio.effectiveConcurrentSounds }, path: root.location.pathname };
+    try {
+      await sdk.reportBug(title.value.trim(), details.value.trim(), { platform: 'web', attachments: [{ fileName: 'context.json', contentType: 'application/json', data: JSON.stringify(context) }] });
+      title.value = ''; details.value = ''; status.textContent = t[19];
+    } catch (error) {
+      status.textContent = error?.status === 429 ? t[21] : t[20];
+    } finally {
+      // Disabling the focused button drops focus to <body>; restore it so dialog keys (Escape) keep working.
+      const refocus = doc.activeElement === button || doc.activeElement === doc.body;
+      button.disabled = false; if (refocus) button.focus();
+    }
   }
   function refreshPanels() {
     const t = strings();
@@ -494,7 +550,13 @@
         for (const node of [...panel.fps.querySelectorAll('[data-game-options-label]'), ...panel.sound.querySelectorAll('[data-game-options-label]')]) node.firstElementChild.textContent = t[Number(node.dataset.gameOptionsLabel)];
         panel.mode.options[0].textContent = t[10]; panel.mode.options[1].textContent = t[8];
         panel.sounds.options[4].textContent = t[8];
+        panel.reportHeading.textContent = t[14]; panel.reportSend.textContent = t[17];
+        // A finished report's status line is in the old language; clear it rather than mix languages.
+        const reportStatus = panel.report.querySelector('[data-game-report="status"]'); if (reportStatus && !panel.reportSend.disabled) reportStatus.textContent = '';
+        for (const node of panel.report.querySelectorAll('[data-game-options-label]')) node.firstElementChild.textContent = t[Number(node.dataset.gameOptionsLabel)];
       }
+      panel.report.hidden = !(sdk?.signedIn && typeof sdk.reportBug === 'function');
+      mountLanguage(panel);
       const detected = t[7].replace('{n}', audio.recommendedConcurrentSounds);
       if (panel.sounds.options[0].textContent !== detected) panel.sounds.options[0].textContent = detected;
       panel.mode.value = maxFps ? 'custom' : 'auto'; panel.limitRow.hidden = !maxFps;
@@ -512,6 +574,10 @@
       sdk = root.StarHermit;
       const auth = () => { if (!sdk.signedIn) { user = null; cloudReady = false; } else if (user !== sdk.userId) { user = sdk.userId; cloudReady = false; loadCloud(); } };
       sdk.on('auth', auth); auth();
+      sdk.on('auth', refreshPanels);
+      // Opt-in crash capture: uncaught errors become crash reports for signed-in players
+      // (the SDK caps it at one per message and three per page load).
+      if (typeof sdk.captureCrashes === 'function') sdk.captureCrashes({ platform: 'web' });
     }
     for (const preset of doc.querySelectorAll('select')) {
       if (preset.closest('.game-options-controls')) continue;
@@ -537,12 +603,16 @@
       .game-options-controls h3{margin:12px 0 8px;font-size:1.1em}
       .game-options-row{box-sizing:border-box;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(90px,42%) auto;align-items:center;gap:8px;margin:8px 0;width:100%;min-height:44px;white-space:normal!important}
       .game-options-row[hidden]{display:none!important}
-      .game-options-row>span{min-width:0;overflow-wrap:anywhere}
+      .game-options-row>span{min-width:0;overflow-wrap:break-word;hyphens:auto}
       .game-options-row input,.game-options-row select{box-sizing:border-box;min-width:0;max-width:100%;width:100%;min-height:44px;font:inherit;color:inherit;accent-color:var(--accent,#a9cfff)}
-      .game-options-row select,.game-options-row input[type=number]{background:var(--panel2,#202735);color:var(--text,#f4f6ff);border:1px solid #687080;border-radius:5px;padding:5px}
+      .game-options-row select,.game-options-row input[type=number],.game-options-row input[type=text]{background:var(--panel2,#202735);color:var(--text,#f4f6ff);border:1px solid #687080;border-radius:5px;padding:5px}
       .game-options-row input[type=checkbox]{width:22px;min-height:22px;justify-self:end}
       .game-options-row output{min-width:3em;text-align:right;font-variant-numeric:tabular-nums}
-      .game-options-summary{font-size:.85em;white-space:normal;overflow-wrap:anywhere}
+      .game-options-controls[hidden]{display:none!important}
+      .game-options-row textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;font:inherit;color:var(--text,#f4f6ff);background:var(--panel2,#202735);border:1px solid #687080;border-radius:5px;padding:5px;resize:vertical}
+      .game-options-report .game-options-row{grid-template-columns:minmax(0,1fr) minmax(120px,62%)}
+      .game-options-report-send{min-height:44px;padding:0 16px;font:inherit;color:var(--text,#f4f6ff);background:var(--panel2,#202735);border:1px solid #687080;border-radius:5px;cursor:pointer}
+      .game-options-summary{font-size:.85em;white-space:normal;overflow-wrap:break-word;hyphens:auto}
       .game-options-dialog{box-sizing:border-box;width:min(580px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:20px;background:var(--panel,#202735);color:var(--text,#f4f6ff);border:1px solid #687080;border-radius:10px}
       .game-options-dialog::backdrop{background:#0009}
       @media(max-width:480px){.game-options-row{grid-template-columns:minmax(0,1fr) minmax(80px,40%) auto;gap:5px;font-size:.9em}}

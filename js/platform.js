@@ -22,6 +22,8 @@
   const SETTINGS_VERSION = 2;
   const PROGRESSION_VERSION = 1;
   const SH = () => (typeof globalThis !== 'undefined' ? globalThis.StarHermit : null) || null;
+  const T = (key, vars) => (typeof globalThis !== 'undefined' && globalThis.SOI18N ? globalThis.SOI18N.T(key, vars)
+    : String(key).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? vars[k] : m)));
   // Settings mirrored to the platform settings KV (bindings go through the
   // platform controls API instead).
   const SYNCED_SETTINGS = ['audio', 'graphics', 'palette', 'camera', 'reducedMotion', 'highContrast',
@@ -57,6 +59,49 @@
     };
   }
 
+  /**
+   * Merge two progression docs without dropping either side: per-stage,
+   * per-challenge and per-day records keep the higher score, achievements keep
+   * the earliest unlock, stats keep the larger counts, the streak with the
+   * later day (then the longer run) wins. Either side may be null.
+   */
+  function mergeProgression(a, b) {
+    const base = defaultProgression();
+    const A = Object.assign(defaultProgression(), a || {}), B = Object.assign(defaultProgression(), b || {});
+    const obj = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
+    const better = (x, y) => {
+      const out = Object.assign({}, obj(x));
+      for (const [k, v] of Object.entries(obj(y))) {
+        const cur = out[k];
+        if (!cur || (v && ((v.won && !cur.won) || (!!v.won === !!cur.won && (Number(v.score) || 0) > (Number(cur.score) || 0))))) out[k] = v;
+      }
+      return out;
+    };
+    const achievements = Object.assign({}, obj(A.achievements));
+    for (const [k, v] of Object.entries(obj(B.achievements))) {
+      if (!achievements[k] || (v && String(v) < String(achievements[k]))) achievements[k] = v;
+    }
+    const stats = {};
+    for (const k of new Set([...Object.keys(base.stats), ...Object.keys(obj(A.stats)), ...Object.keys(obj(B.stats))])) {
+      stats[k] = Math.max(Number(obj(A.stats)[k]) || 0, Number(obj(B.stats)[k]) || 0);
+    }
+    const sa = obj(A.streak), sb = obj(B.streak);
+    const streak = String(sa.lastDate || '') > String(sb.lastDate || '') ? sa
+      : String(sb.lastDate || '') > String(sa.lastDate || '') ? sb
+      : ((sa.count || 0) >= (sb.count || 0) ? sa : sb);
+    const out = Object.assign({}, A, B, {
+      version: PROGRESSION_VERSION,
+      journey: better(A.journey, B.journey),
+      challenges: better(A.challenges, B.challenges),
+      dailies: better(A.dailies, B.dailies),
+      streak: { count: streak.count || 0, lastDate: streak.lastDate || null },
+      achievements, stats,
+      updatedAt: Math.max(Number(A.updatedAt) || 0, Number(B.updatedAt) || 0),
+    });
+    delete out.checksum;
+    return out;
+  }
+
   function checksum(doc) {
     const clone = JSON.parse(JSON.stringify(doc));
     delete clone.checksum;
@@ -72,6 +117,7 @@
       this.profile = null;                // {name} from the platform profile
       this.onSyncChange = null;           // UI hook for the sync badge
       this.onSignedOut = null;            // UI hook when renewal is refused
+      this.onProgressionMerged = null;    // UI hook after a save conflict was merged
       this._timeOffset = 0;               // serverNow - clientNow
       this._timeSynced = false;
       this._syncState = 'offline';        // offline | idle | saving | synced
@@ -81,6 +127,8 @@
       if (sh) {
         if (!sh.token) sh.init();
         sh.on('saved', (ok) => this._setSync(ok ? 'synced' : 'idle'));
+        // Another device saved since our last load: reload, merge, save the merge.
+        sh.on('saveconflict', () => { this.resolveConflict(); });
         sh.on('auth', (a) => {
           const was = this.hosted;
           this._syncFromSdk();
@@ -150,7 +198,7 @@
     async loadProfile() {
       if (!this.hosted) return null;
       const p = await SH().profile().catch(() => null);
-      this.profile = { name: p ? p.displayName : 'Player ' + this.userId.slice(0, 6) };
+      this.profile = { name: p ? p.displayName : T('Player {id}', { id: this.userId.slice(0, 6) }) };
       return this.profile;
     }
 
@@ -158,7 +206,7 @@
     async nickname(userId) {
       const id = String(userId);
       const p = this.hosted ? await SH().profile(id).catch(() => null) : null;
-      return p ? p.displayName : 'Player ' + id.slice(0, 6);
+      return p ? p.displayName : T('Player {id}', { id: id.slice(0, 6) });
     }
 
     // ------------------------------------------------------- persistence --
@@ -262,8 +310,9 @@
     }
 
     /**
-     * Load the cloud mirror; the remote copy wins ties and newer snapshots
-     * (cookbook: on conflict prefer remote), then becomes the offline cache.
+     * Load the cloud mirror and merge it with the local doc (mergeProgression);
+     * the merge becomes the offline cache and is uploaded when the cloud
+     * lacked anything this device has.
      */
     async syncProgression(local) {
       if (!this.hosted) return { resolved: local, source: 'local' };
@@ -271,11 +320,25 @@
       this._setSync('synced');
       const sane = remote && typeof remote === 'object' && remote.version === PROGRESSION_VERSION &&
         (!remote.checksum || remote.checksum === checksum(remote));
-      if (sane && remote.updatedAt >= (local.updatedAt || 0)) {
-        this._localSet('progression', remote);
-        return { resolved: remote, source: 'cloud' };
-      }
-      return { resolved: local, source: 'local' };
+      if (!sane) return { resolved: local, source: 'local' };
+      const merged = mergeProgression(remote, local);
+      const cloudBehind = JSON.stringify(mergeProgression(remote, null)) !== JSON.stringify(merged);
+      if (cloudBehind) await this.saveProgression(merged);
+      else { merged.checksum = checksum(merged); this._localSet('progression', merged); }
+      return { resolved: this.loadProgression(), source: cloudBehind ? 'merged' : 'cloud' };
+    }
+
+    /** saveconflict: reload the cloud doc, merge with the local one, save the merge. */
+    async resolveConflict() {
+      const sh = SH();
+      if (!this.hosted || !sh) return;
+      const remote = await sh.loadJSON().catch(() => null);
+      if (sh.saveConflicted() || sh.saveLoadFailed()) { this._setSync('idle'); return; }
+      const sane = remote && typeof remote === 'object' && remote.version === PROGRESSION_VERSION &&
+        (!remote.checksum || remote.checksum === checksum(remote));
+      const merged = mergeProgression(sane ? remote : null, this.loadProgression());
+      await this.saveProgression(merged);
+      if (typeof this.onProgressionMerged === 'function') this.onProgressionMerged(this.loadProgression());
     }
 
     /** Small sync badge state: offline | idle | saving | synced. */
@@ -312,7 +375,7 @@
         durationMs: entry.durationMs,
         sessionId: entry.sessionId,
         replay: entry.replay || null,
-        player: (this.profile && this.profile.name) || 'Guest',
+        player: (this.profile && this.profile.name) || null,
         at: this.now(),
       };
       const board = this._localGet('board:' + record.board) || [];
@@ -362,7 +425,7 @@
         const data = await SH().leaderboardEntries(leaderboardId, { page: 1, pageSize: 50, scope: friendsOnly ? 'friends' : undefined });
         const raw = (data && data.items) || [];
         const entries = await Promise.all(raw.map(async (e) => ({
-          player: e.userId ? await this.nickname(e.userId) : 'Guest',
+          player: e.userId ? await this.nickname(e.userId) : null,
           score: e.score,
           seed: e.seed !== undefined ? e.seed : null,
           durationMs: e.durationMs !== undefined ? e.durationMs : null,
@@ -370,7 +433,7 @@
         return {
           entries,
           casual: false,
-          note: 'Platform leaderboard — read-only. Your personal bests are stored with your account.',
+          note: 'Platform leaderboard — read-only. Your personal bests are stored with your account.', // English key; ui.js translates
         };
       } catch (e) {
         return { entries: this._localGet('board:' + board) || [], casual: true, warning: e.code };
@@ -389,5 +452,5 @@
     }
   }
 
-  return { Platform, SYNCED_SETTINGS, DEFAULT_SETTINGS, defaultProgression, checksum, SETTINGS_VERSION, PROGRESSION_VERSION };
+  return { Platform, SYNCED_SETTINGS, DEFAULT_SETTINGS, defaultProgression, mergeProgression, checksum, SETTINGS_VERSION, PROGRESSION_VERSION };
 });

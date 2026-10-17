@@ -18,7 +18,7 @@
 <header id="topbar" role="banner">
   <div class="topbar-inner">
     <button id="btn-home" class="brand" data-action="home" aria-label="Spectrum Orbs — home">
-      <span class="brand-orb" aria-hidden="true"></span> Spectrum Orbs
+      <span class="brand-orb" aria-hidden="true"></span> <span data-i18n-skip>Spectrum Orbs</span>
     </button>
     <div class="topbar-status">
       <span id="conn-status" class="conn" role="status">Offline</span>
@@ -36,7 +36,7 @@
   <!-- ============================== TITLE ============================== -->
   <section id="screen-title" class="screen" aria-labelledby="title-heading">
     <div class="title-hero">
-      <h1 id="title-heading">Spectrum Orbs</h1>
+      <h1 id="title-heading" data-i18n-skip>Spectrum Orbs</h1>
       <p class="tagline">A kinetic sculpture gallery. Sort every tube to a single color.</p>
     </div>
     <nav class="title-menu" aria-label="Main menu">
@@ -52,8 +52,8 @@
       <button class="menu-btn" data-action="play-learn">Learn to Play</button>
       <button class="menu-btn" data-action="scores">Scores &amp; Friends</button>
       <button class="menu-btn" data-action="profile">Profile &amp; Progress</button>
-      <button class="menu-btn" id="btn-signin" data-action="sh-signin" hidden>Sign in with StarHermit</button>
-      <button class="menu-btn" id="btn-invite" data-action="sh-invite" hidden>Invite a friend</button>
+      <button class="menu-btn" id="btn-signin" data-action="sh-signin" hidden data-i18n-skip>Sign in with StarHermit</button>
+      <button class="menu-btn" id="btn-invite" data-action="sh-invite" hidden data-i18n-skip>Invite a friend</button>
     </nav>
     <p class="title-foot" id="resume-note" hidden></p>
   </section>
@@ -299,6 +299,9 @@
 <script src="js/session.js"></script>
 <script src="starhermit-sdk.js"></script>
 <script>StarHermit.init();</script>
+<script src="sh-language.js"></script>
+<script src="js/strings.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/platform.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>

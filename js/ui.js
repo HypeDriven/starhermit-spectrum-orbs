@@ -9,6 +9,20 @@
   'use strict';
 
   const Content = root.SpectrumContent;
+  // Text goes through SOI18N (js/i18n.js); English source strings are the keys.
+  const T = (key, vars) => (root.SOI18N ? root.SOI18N.T(key, vars)
+    : String(key).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? vars[k] : m)));
+
+  /** Player-facing name of a level (content.js names are English data). */
+  function levelName(lv) {
+    if (!lv) return '';
+    if (/^daily-/.test(lv.id) && lv.date) return T('Daily — {date}', { date: lv.date });
+    const pm = /^practice-(\w+)-/.exec(lv.id || '');
+    if (pm && Content.PRACTICE[pm[1]]) return T('{name} Practice', { name: T(Content.PRACTICE[pm[1]].name) });
+    return lv.name ? T(lv.name) : lv.id;
+  }
+  /** Localized orb color name (palette labels are English data). */
+  function colorName(c) { return c ? T(c.label) : '?'; }
 
   const INVALID_TEXT = {
     'terminal': 'This round has ended.',
@@ -29,6 +43,16 @@
     prev: ['ArrowLeft', 'ArrowUp'], next: ['ArrowRight', 'ArrowDown'],
   };
   const DEFAULT_GAMEPAD = { confirm: 0, cancel: 1, undo: 2, hint: 3, pause: 9 };
+  const TERMINAL_TEXT = {
+    'move-limit-exceeded': 'Out of moves.', 'time-expired': 'Time ran out.',
+    'no-legal-moves': 'No legal moves remain.', 'abandoned': 'Round left unfinished.',
+  };
+  const MEDAL_TITLE = { gold: 'Gold (≤ {n} moves)', silver: 'Silver (≤ {n} moves)', bronze: 'Bronze (≤ {n} moves)' };
+  // Player-facing names of the bindable actions (Settings → Controls).
+  const ACTION_NAMES = {
+    confirm: 'Confirm', cancel: 'Cancel', pause: 'Pause', undo: 'Undo', hint: 'Hint',
+    restart: 'Restart', camera: 'Camera', prev: 'Previous tube', next: 'Next tube',
+  };
 
   class UI {
     constructor(platform) {
@@ -140,21 +164,21 @@
       root.style.bottom = bottom;
     }
 
-    invalidText(reason) { return INVALID_TEXT[reason] || 'That move is not legal.'; }
+    invalidText(reason) { return T(INVALID_TEXT[reason] || 'That move is not legal.'); }
 
     // -------------------------------------------------------------- HUD --
 
     updateHud(state, level, score, modeNote) {
-      this.$('#hud-level').textContent = level.name || level.id;
+      this.$('#hud-level').textContent = levelName(level);
       this.$('#hud-moves').textContent = String(state.moves);
       const limitRow = this.$('#hud-limit-row');
       if (state.limits.moves !== null) {
         limitRow.hidden = false;
-        this.$('#hud-limit').textContent = (state.limits.moves - state.moves) + ' moves left';
+        this.$('#hud-limit').textContent = T('{n} moves left', { n: state.limits.moves - state.moves });
       } else if (state.limits.timeMs !== null) {
         limitRow.hidden = false;
         const left = Math.max(0, state.limits.timeMs - state.elapsedMs);
-        this.$('#hud-limit').textContent = fmtTime(left) + ' left';
+        this.$('#hud-limit').textContent = T('{time} left', { time: fmtTime(left) });
       } else {
         limitRow.hidden = true;
       }
@@ -177,13 +201,12 @@
         chip.className = 'tube-chip';
         const btn = document.createElement('button');
         btn.type = 'button';
-        const names = tube.map((c) => palette[c] ? palette[c].label : '?');
+        const names = tube.map((c) => colorName(palette[c]));
         btn.setAttribute('aria-label',
-          'Tube ' + (i + 1) + ': ' + (names.length ? names.join(', ') : 'empty') +
-          ', ' + tube.length + ' of ' + state.capacity +
-          (i === selected ? ', selected' : ''));
+          T('Tube {n}: {orbs}, {count} of {capacity}', { n: i + 1, orbs: names.length ? names.join(', ') : T('empty'), count: tube.length, capacity: state.capacity }) +
+          (i === selected ? T(', selected') : ''));
         btn.setAttribute('data-tube', String(i));
-        btn.title = 'Tube ' + (i + 1);
+        btn.title = T('Tube {n}', { n: i + 1 });
         const num = document.createElement('span');
         num.textContent = (i + 1) + ' ';
         btn.appendChild(num);
@@ -234,13 +257,14 @@
 
     showResults(result, level, opts) {
       const o = opts || {};
+      // Kept so a language change can redraw the open results overlay in place.
+      this._results = [result, level, opts];
       this.$('#results-headline').textContent = result.won
-        ? (result.medal === 'gold' ? 'A flawless arrangement.'
-          : result.medal === 'silver' ? 'Beautifully sorted.'
-          : result.medal === 'bronze' ? 'The gallery settles.'
-          : 'Sorted — with room to refine.')
-        : ({ 'move-limit-exceeded': 'Out of moves.', 'time-expired': 'Time ran out.',
-             'no-legal-moves': 'No legal moves remain.', 'abandoned': 'Round left unfinished.' }[result.terminalReason] || 'Round over.');
+        ? (result.medal === 'gold' ? T('A flawless arrangement.')
+          : result.medal === 'silver' ? T('Beautifully sorted.')
+          : result.medal === 'bronze' ? T('The gallery settles.')
+          : T('Sorted — with room to refine.'))
+        : T(TERMINAL_TEXT[result.terminalReason] || 'Round over.');
 
       const medalRow = this.$('#results-medal');
       medalRow.innerHTML = '';
@@ -248,7 +272,7 @@
         const s = document.createElement('span');
         s.className = 'medal ' + m + (result.won && medalRank(result.medal) <= medalRank(m) ? ' earned' : '');
         s.textContent = m === 'gold' ? '🥇' : m === 'silver' ? '🥈' : '🥉';
-        s.title = m + ' (≤ ' + level.par[m] + ' moves)';
+        s.title = T(MEDAL_TITLE[m], { n: level.par[m] });
         medalRow.appendChild(s);
       }
 
@@ -260,27 +284,28 @@
         const td = document.createElement('td'); td.textContent = val;
         tr.append(th, td); rows.appendChild(tr);
       };
-      add('Completion', result.won ? '+' + result.base : '0');
-      add('Move efficiency (' + result.moves + ' moves, par ' + level.par.gold + ')', signed(result.efficiency));
-      if (result.speed) add('Speed bonus', signed(result.speed));
-      add('Medal bonus', signed(result.medalBonus));
-      if (result.invalids) add('Invalid actions × ' + result.invalids, signed(result.invalidPenalty));
-      if (result.undos) add('Undos × ' + result.undos, signed(result.undoPenalty));
-      add('Time', fmtTime(result.elapsedMs));
+      add(T('Completion'), result.won ? '+' + result.base : '0');
+      add(T('Move efficiency ({moves} moves, par {par})', { moves: result.moves, par: level.par.gold }), signed(result.efficiency));
+      if (result.speed) add(T('Speed bonus'), signed(result.speed));
+      add(T('Medal bonus'), signed(result.medalBonus));
+      if (result.invalids) add(T('Invalid actions × {n}', { n: result.invalids }), signed(result.invalidPenalty));
+      if (result.undos) add(T('Undos × {n}', { n: result.undos }), signed(result.undoPenalty));
+      add(T('Time'), fmtTime(result.elapsedMs));
       this.$('#score-total').textContent = String(result.total);
 
-      this.$('#results-progress').textContent = o.progressText || '';
-      this.$('#results-board-status').textContent = o.boardText || '';
+      const txt = (v) => (typeof v === 'function' ? v() : v || '');
+      this.$('#results-progress').textContent = txt(o.progressText);
+      this.$('#results-board-status').textContent = txt(o.boardText);
       const ach = this.$('#results-achievements');
       ach.innerHTML = '';
       for (const a of (o.newAchievements || [])) {
         const d = document.createElement('div');
         d.className = 'achievement-toast';
-        d.textContent = '🏆 Achievement unlocked: ' + a.name;
+        d.textContent = '🏆 ' + T('Achievement unlocked: {name}', { name: T(a.name) });
         ach.appendChild(d);
       }
-      this.$('#btn-results-next').textContent = o.nextLabel || 'Next';
-      this.openOverlay('results');
+      this.$('#btn-results-next').textContent = o.nextLabel ? T(o.nextLabel) : T('Next');
+      if (!o.relabel) this.openOverlay('results');
     }
 
     // ---------------------------------------------------------- settings --
@@ -337,14 +362,14 @@
         const row = document.createElement('div');
         row.className = 'binding-row';
         const label = document.createElement('span');
-        label.textContent = action;
+        label.textContent = T(ACTION_NAMES[action] || action);
         const btn = document.createElement('button');
         btn.type = 'button';
         const gp = DEFAULT_GAMEPAD[action] !== undefined ? ' · 🎮' + DEFAULT_GAMEPAD[action] : '';
         btn.textContent = (keys[0] || '—').replace('Key', '').replace('Arrow', '') + gp;
-        btn.setAttribute('aria-label', 'Rebind ' + action);
+        btn.setAttribute('aria-label', T('Rebind {action}', { action: T(ACTION_NAMES[action] || action) }));
         btn.addEventListener('click', () => {
-          btn.textContent = 'press key…';
+          btn.textContent = T('press key…');
           const cap = (e) => {
             e.preventDefault();
             // A key belongs to exactly one action: take it off any other.
@@ -398,12 +423,12 @@
       const b = this.getBindings();
       const key = (a) => (b[a] && b[a][0] ? b[a][0].replace('Key', '').replace('Arrow', 'Arrow ') : '—');
       const cards = [
-        { title: 'Goal', body: 'Move the top orb between tubes until every tube holds a single color (or is empty). A tube is complete when it is full of one color.', demo: [['●', '●', '●', '●'], '← complete'] },
-        { title: 'Lift & pour', body: 'Select a tube to lift its top orb, then select a target tube. Keyboard: ' + key('prev') + '/' + key('next') + ' to choose, ' + key('confirm') + ' to confirm.', demo: [['▲'], '→', ['▲', '▲']] },
-        { title: 'Matching rule', body: 'An orb may only land on an empty tube or on an orb of the same color. Full tubes accept nothing. Invalid attempts explain why.', demo: [['●'], '✗→', ['▲']] },
-        { title: 'Undo & hints', body: 'Undo (' + key('undo') + ') takes back your last move where the mode allows. Hint (' + key('hint') + ') suggests a legal move using the same rules engine.', demo: null },
-        { title: 'Medals', body: 'Finish within par for bronze, silver, or gold. Score = completion + efficiency + speed − penalties. Every component is itemized on the results screen.', demo: null },
-        { title: 'Controls', body: 'Pause: ' + key('pause') + ' · Restart: ' + key('restart') + ' · Camera: ' + key('camera') + ' · Gamepad: D-pad moves focus, bottom button confirms.', demo: null },
+        { title: T('Goal'), body: T('Move the top orb between tubes until every tube holds a single color (or is empty). A tube is complete when it is full of one color.'), demo: [['●', '●', '●', '●'], T('← complete')] },
+        { title: T('Lift & pour'), body: T('Select a tube to lift its top orb, then select a target tube. Keyboard: {prev}/{next} to choose, {confirm} to confirm.', { prev: key('prev'), next: key('next'), confirm: key('confirm') }), demo: [['▲'], '→', ['▲', '▲']] },
+        { title: T('Matching rule'), body: T('An orb may only land on an empty tube or on an orb of the same color. Full tubes accept nothing. Invalid attempts explain why.'), demo: [['●'], '✗→', ['▲']] },
+        { title: T('Undo & hints'), body: T('Undo ({undo}) takes back your last move where the mode allows. Hint ({hint}) suggests a legal move using the same rules engine.', { undo: key('undo'), hint: key('hint') }), demo: null },
+        { title: T('Medals'), body: T('Finish within par for bronze, silver, or gold. Score = completion + efficiency + speed − penalties. Every component is itemized on the results screen.'), demo: null },
+        { title: T('Controls'), body: T('Pause: {pause} · Restart: {restart} · Camera: {camera} · Gamepad: D-pad moves focus, bottom button confirms.', { pause: key('pause'), restart: key('restart'), camera: key('camera') }), demo: null },
       ];
       const root = this.$('#help-cards');
       root.innerHTML = '';
@@ -439,8 +464,9 @@
         cell.className = 'journey-cell' + (locked ? ' locked' : '') + (lv.mastery ? ' mastery' : '');
         cell.disabled = locked;
         cell.setAttribute('role', 'listitem');
-        cell.setAttribute('aria-label', 'Stage ' + lv.index + (lv.name ? ' ' + lv.name : '') +
-          (locked ? ', locked' : rec ? ', completed, medal ' + (rec.medal || 'clear') : ', available'));
+        const medalName = T({ gold: 'gold', silver: 'silver', bronze: 'bronze' }[rec && rec.medal] || 'clear');
+        cell.setAttribute('aria-label', T('Stage {n}', { n: lv.index }) + (lv.name ? ' ' + levelName(lv) : '') +
+          (locked ? T(', locked') : rec ? T(', completed, medal {medal}', { medal: medalName }) : T(', available')));
         const num = document.createElement('span'); num.textContent = String(lv.index);
         const medal = document.createElement('span'); medal.className = 'cell-medal';
         medal.textContent = rec ? ({ gold: '🥇', silver: '🥈', bronze: '🥉', clear: '✓' }[rec.medal] || '✓') : (lv.mastery ? '◆' : '');
@@ -454,16 +480,17 @@
       const body = this.$('#profile-body');
       const completed = Object.keys(progression.journey || {}).length;
       const total = Content.JOURNEY.length;
-      const name = (platform.profile && platform.profile.name) || 'Guest';
+      const name = (platform.profile && platform.profile.name) || T('Guest');
       body.innerHTML = '';
       const p = document.createElement('p');
-      p.textContent = name + ' — ' + completed + ' of ' + total + ' journey stages complete. ' +
-        progression.stats.totalCompletions + ' total boards finished. Daily streak: ' + progression.streak.count + '.';
+      p.textContent = T('{name} — {done} of {total} journey stages complete. {boards} total boards finished. Daily streak: {streak}.', {
+        name, done: completed, total, boards: progression.stats.totalCompletions, streak: progression.streak.count,
+      });
       body.appendChild(p);
       if (!platform.hosted) {
         const note = document.createElement('p');
         note.className = 'rail-note';
-        note.textContent = 'Playing as guest — progress is stored on this device. Sign in through the host for cloud sync.';
+        note.textContent = T('Playing as guest — progress is stored on this device. Sign in through the host for cloud sync.');
         body.appendChild(note);
       }
       const list = this.$('#achievement-list');
@@ -473,35 +500,36 @@
         const got = progression.achievements[a.key];
         li.className = got ? '' : 'locked';
         const n = document.createElement('div'); n.className = 'ach-name';
-        n.textContent = (got ? '🏆 ' : '○ ') + a.name;
-        const d = document.createElement('div'); d.className = 'ach-desc'; d.textContent = a.desc;
+        n.textContent = (got ? '🏆 ' : '○ ') + T(a.name);
+        const d = document.createElement('div'); d.className = 'ach-desc'; d.textContent = T(a.desc);
         li.append(n, d);
         list.appendChild(li);
       }
     }
 
     renderScores(data, boardLabel) {
+      this._scores = [data, boardLabel];
       const rows = this.$('#scores-rows');
       rows.innerHTML = '';
       const entries = (data && data.entries) || [];
       const note = this.$('#scores-casual-note');
       if (data && data.note) {
         note.hidden = false;
-        note.textContent = data.note;
+        note.textContent = T(data.note);
       } else {
         note.hidden = !(data && data.casual);
-        note.textContent = 'Casual board — authoritative validation unavailable offline.';
+        note.textContent = T('Casual board — authoritative validation unavailable offline.');
       }
       if (!entries.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5; td.textContent = 'No scores yet — be the first.';
+        td.colSpan = 5; td.textContent = T('No scores yet — be the first.');
         tr.appendChild(td); rows.appendChild(tr);
         return;
       }
       entries.slice(0, 50).forEach((e, i) => {
         const tr = document.createElement('tr');
-        for (const v of [i + 1, e.player || 'Guest', e.score,
+        for (const v of [i + 1, e.player || T('Guest'), e.score,
              e.seed === null || e.seed === undefined ? '—' : String(e.seed).slice(0, 8),
              fmtTime(e.durationMs || 0)]) {
           const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
@@ -511,29 +539,30 @@
     }
 
     renderTutorial(step, idx, total) {
+      this._tutorial = step ? [step, idx, total] : null;
       const card = this.$('#tutorial-card');
       if (!step) { card.hidden = true; return; }
       card.hidden = false;
-      this.$('#tutorial-title').textContent = 'Lesson ' + (idx + 1) + ' of ' + total + ' — ' + step.title;
-      this.$('#tutorial-body').textContent = step.body;
-      this.$('#tutorial-hint').textContent = step.hint || '';
+      this.$('#tutorial-title').textContent = T('Lesson {n} of {total} — {title}', { n: idx + 1, total, title: T(step.title) });
+      this.$('#tutorial-body').textContent = T(step.body);
+      this.$('#tutorial-hint').textContent = step.hint ? T(step.hint) : '';
     }
 
     updateTopbar(platform, progression) {
       const conn = this.$('#conn-status');
-      conn.textContent = platform.hosted ? 'Online' : 'Offline';
+      conn.textContent = platform.hosted ? T('Online') : T('Offline');
       conn.classList.toggle('online', platform.hosted);
       const sync = this.$('#sync-status');
       if (sync) {
         const st = platform.syncStatus();
         sync.hidden = st === 'offline' || st === 'idle';
-        sync.textContent = st === 'synced' ? 'Synced' : st === 'saving' ? 'Saving…' : '';
+        sync.textContent = st === 'synced' ? T('Synced') : st === 'saving' ? T('Saving…') : '';
         sync.classList.toggle('saving', st === 'saving');
       }
       const chip = this.$('#profile-chip');
-      chip.textContent = (platform.profile && platform.profile.name) || 'Guest';
+      chip.textContent = (platform.profile && platform.profile.name) || T('Guest');
       const done = Object.keys((progression && progression.journey) || {}).length;
-      this.$('#journey-progress-label').textContent = done + ' / ' + Content.JOURNEY.length + ' stages';
+      this.$('#journey-progress-label').textContent = T('{done} / {total} stages', { done, total: Content.JOURNEY.length });
     }
   }
 
@@ -545,11 +574,11 @@
   function medalRank(m) { return { gold: 0, silver: 1, bronze: 2, clear: 3 }[m] ?? 4; }
   function paceMedal(moves, par) {
     if (!par) return '—';
-    if (moves <= par.gold) return '🥇 gold pace';
-    if (moves <= par.silver) return '🥈 silver pace';
-    if (moves <= par.bronze) return '🥉 bronze pace';
-    return 'clear pace';
+    if (moves <= par.gold) return '🥇 ' + T('gold pace');
+    if (moves <= par.silver) return '🥈 ' + T('silver pace');
+    if (moves <= par.bronze) return '🥉 ' + T('bronze pace');
+    return T('clear pace');
   }
 
-  root.SpectrumUI = { UI, fmtTime, DEFAULT_BINDINGS, DEFAULT_GAMEPAD };
+  root.SpectrumUI = { UI, fmtTime, DEFAULT_BINDINGS, DEFAULT_GAMEPAD, T, levelName, colorName };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

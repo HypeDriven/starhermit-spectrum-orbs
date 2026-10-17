@@ -149,8 +149,25 @@ export const LOCALES = Object.keys(STRINGS);
  * opts: { settings (object with .graphics), onChange(), renderer (may be null) }
  */
 export function mountGraphicsPanel(root, opts) {
-  const locale = pickLocale(document.documentElement.getAttribute('data-locale') || navigator.language);
-  const T = STRINGS[locale];
+  // Follows the game language (window.SOI18N); a language change rebuilds this
+  // panel's own box only — the shared game-options sections in the fieldset stay.
+  const gameLocale = () => pickLocale((window.SOI18N && window.SOI18N.lang) || 'en-US');
+  let locale = gameLocale();
+  let T = STRINGS[locale];
+  let api = build();
+  document.addEventListener('so-language', () => {
+    locale = gameLocale();
+    T = STRINGS[locale];
+    const focusId = root.contains(document.activeElement) ? document.activeElement.id : null;
+    api.wrap.remove();
+    api = build();
+    if (focusId) document.getElementById(focusId)?.focus();
+  });
+  // Keep the summary live (pixel size / post status) while the panel is open.
+  setInterval(() => { if (root.offsetParent) api.refreshSummary(); }, 1500);
+  return { refresh: () => api.refresh() };
+
+  function build() {
   const fill = (s, tier) => s.replace('{tier}', tier);
   const g = () => opts.settings.graphics;
   const r = opts.renderer && opts.renderer.renderer ? opts.renderer : null;
@@ -255,9 +272,8 @@ export function mountGraphicsPanel(root, opts) {
   }
 
   refresh();
-  // Keep the summary live (pixel size / post status) while the panel is open.
-  setInterval(() => { if (root.offsetParent) refreshSummary(); }, 1500);
-  return { refresh };
+  return { wrap, refresh, refreshSummary };
+  }
 }
 
 /** Bring a saved graphics object (including the legacy { tier }) into the current shape. */
