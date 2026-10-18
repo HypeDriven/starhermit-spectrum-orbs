@@ -365,7 +365,7 @@
         if (!sdk.signedIn || sdk.userId !== account) return;
         const values = result?.settings || {};
         if (validRecord(values[audioSlot])) {
-          if (values[audioSlot].at > audioRecord.at) { audioRecord = { saved: resolveAudio(values[audioSlot].saved, root.navigator), at: values[audioSlot].at }; audioDirty = false; write(audioKey, audioRecord); }
+          if (values[audioSlot].at > audioRecord.at) { audioRecord = { saved: resolveAudio(values[audioSlot].saved, root.navigator, mobile), at: values[audioSlot].at }; audioDirty = false; write(audioKey, audioRecord); }
           else if (audioRecord.at > values[audioSlot].at) audioDirty = true;
         } else if (audioRecord.at) audioDirty = true;
         if (fpsSlot && validRecord(values[fpsSlot])) {
@@ -395,7 +395,7 @@
   }
   function scheduleCloud() { root.clearTimeout(timer); timer = root.setTimeout(flushCloud, 800); }
   function setAudio(patch) {
-    audio = resolveAudio({ ...audio, ...patch }, root.navigator);
+    audio = resolveAudio({ ...audio, ...patch }, root.navigator, mobile);
     audioRecord = { saved: { master: audio.master, music: audio.music, effects: audio.effects, ui: audio.ui, maxConcurrentSounds: audio.maxConcurrentSounds, soundLimitMode: audio.soundLimitMode, muted: audio.muted }, at: Date.now() };
     audioDirty = true; write(audioKey, audioRecord); updatePlayback(); refreshPanels(); scheduleCloud();
   }
