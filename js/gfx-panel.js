@@ -21,7 +21,7 @@ const EN = {
     off: 'Off', on: 'On', low: 'Low', medium: 'Medium', high: 'High', fxaa: 'FXAA', smaa: 'SMAA',
     msaa: 'MSAA', static: 'Static', animated: 'Animated', plain: 'Plain', detailed: 'Detailed',
   },
-  noShadows: 'no shadows', noAA: 'no anti-aliasing',
+  noShadows: 'no shadows', noAA: 'no anti-aliasing', level: 'Level {n}',
   postNote: 'Post-processing is unavailable on this device; rendering without it.',
   noWebgl: '3D view unavailable — graphics settings apply when WebGL is available.',
 };
@@ -43,7 +43,7 @@ const STRINGS = {
       off: 'No', on: 'Sí', low: 'Bajo', medium: 'Medio', high: 'Alto', fxaa: 'FXAA', smaa: 'SMAA',
       msaa: 'MSAA', static: 'Estático', animated: 'Animado', plain: 'Simple', detailed: 'Detallado',
     },
-    noShadows: 'sin sombras', noAA: 'sin antialiasing',
+    noShadows: 'sin sombras', noAA: 'sin antialiasing', level: 'Nivel {n}',
     postNote: 'El posprocesamiento no está disponible en este dispositivo; se renderiza sin él.',
     noWebgl: 'Vista 3D no disponible: los ajustes gráficos se aplican cuando WebGL esté disponible.',
   },
@@ -61,7 +61,7 @@ const STRINGS = {
       off: 'Aus', on: 'An', low: 'Niedrig', medium: 'Mittel', high: 'Hoch', fxaa: 'FXAA', smaa: 'SMAA',
       msaa: 'MSAA', static: 'Statisch', animated: 'Animiert', plain: 'Schlicht', detailed: 'Detailliert',
     },
-    noShadows: 'keine Schatten', noAA: 'keine Kantenglättung',
+    noShadows: 'keine Schatten', noAA: 'keine Kantenglättung', level: 'Stufe {n}',
     postNote: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; es wird ohne sie gerendert.',
     noWebgl: '3D-Ansicht nicht verfügbar – Grafikeinstellungen gelten, sobald WebGL verfügbar ist.',
   },
@@ -79,7 +79,7 @@ const STRINGS = {
       off: 'Désactivé', on: 'Activé', low: 'Bas', medium: 'Moyen', high: 'Élevé', fxaa: 'FXAA', smaa: 'SMAA',
       msaa: 'MSAA', static: 'Statique', animated: 'Animé', plain: 'Simple', detailed: 'Détaillé',
     },
-    noShadows: 'sans ombres', noAA: 'sans anticrénelage',
+    noShadows: 'sans ombres', noAA: 'sans anticrénelage', level: 'Niveau {n}',
     postNote: 'Le post-traitement est indisponible sur cet appareil ; rendu sans post-traitement.',
     noWebgl: 'Vue 3D indisponible : les réglages graphiques s’appliqueront quand WebGL sera disponible.',
   },
@@ -97,7 +97,7 @@ const STRINGS = {
       off: 'Desligado', on: 'Ligado', low: 'Baixo', medium: 'Médio', high: 'Alto', fxaa: 'FXAA', smaa: 'SMAA',
       msaa: 'MSAA', static: 'Estático', animated: 'Animado', plain: 'Simples', detailed: 'Detalhado',
     },
-    noShadows: 'sem sombras', noAA: 'sem suavização',
+    noShadows: 'sem sombras', noAA: 'sem suavização', level: 'Nível {n}',
     postNote: 'O pós-processamento não está disponível neste dispositivo; renderizando sem ele.',
     noWebgl: 'Visão 3D indisponível — as configurações gráficas valem quando o WebGL estiver disponível.',
   },
@@ -115,7 +115,7 @@ const STRINGS = {
       off: 'No', on: 'Sì', low: 'Basso', medium: 'Medio', high: 'Alto', fxaa: 'FXAA', smaa: 'SMAA',
       msaa: 'MSAA', static: 'Statico', animated: 'Animato', plain: 'Semplice', detailed: 'Dettagliato',
     },
-    noShadows: 'senza ombre', noAA: 'senza anti-aliasing',
+    noShadows: 'senza ombre', noAA: 'senza anti-aliasing', level: 'Livello {n}',
     postNote: 'La post-elaborazione non è disponibile su questo dispositivo; rendering senza.',
     noWebgl: 'Vista 3D non disponibile: le impostazioni grafiche si applicano quando WebGL è disponibile.',
   },
@@ -240,12 +240,13 @@ export function mountGraphicsPanel(root, opts) {
       q.antialias === 'off' ? T.noAA : q.antialias.toUpperCase(),
     ].filter(Boolean);
     const px = info && info.resolved ? info.summary.match(/(\d+)×(\d+) px/) : null;
-    return [info ? info.gpu : null, parts.join(', '), px ? px[0] : null].filter(Boolean).join(' · ');
+    const level = info && info.level != null ? T.level.replace('{n}', info.level) : null;
+    return [info ? info.gpu : null, level, parts.join(', '), px ? px[0] : null].filter(Boolean).join(' · ');
   }
 
   function refresh() {
     const saved = g();
-    const q = resolve(saved, detected);
+    const q = resolve(saved, detected, r ? r.gpuLevel : undefined);
     const autoTier = T.presets[detected];
     presetSel.innerHTML = `<option value="auto">${fill(T.auto, autoTier)}</option>` +
       PRESETS.map((p) => `<option value="${p}">${T.presets[p]}</option>`).join('');
@@ -263,7 +264,7 @@ export function mountGraphicsPanel(root, opts) {
   }
 
   function refreshSummary() {
-    const q = resolve(g(), detected);
+    const q = resolve(g(), detected, r ? r.gpuLevel : undefined);
     const info = r ? r.graphicsInfo() : null;
     summary.textContent = info ? describeLocal(info.resolved, info) : describeLocal(q, null);
     summary.dataset.preset = q.preset;

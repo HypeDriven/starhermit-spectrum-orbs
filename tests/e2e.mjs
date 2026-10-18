@@ -183,6 +183,7 @@ async function graphicsCheck(page, name) {
   await page.waitForFunction(() => window.SpectrumGame.renderer.q.bloom === 'off');
   const summary = await page.textContent('#gfx-summary');
   if (/Bloom/.test(summary)) throw new Error('summary still lists bloom after override: ' + summary);
+  if (!/ · Level 0 · /.test(summary)) throw new Error('summary lacks the hardware level: ' + summary);
   await page.locator('#gfx-show-fps').check();
   await page.waitForSelector('#fps-meter:not([hidden])', { state: 'attached' });
   await closeSettings(page);

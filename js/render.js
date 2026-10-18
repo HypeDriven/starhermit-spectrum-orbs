@@ -22,7 +22,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { detectPreset, describe, resolve, SHADOW_MAP, PARTICLE_BUDGET } from './gfx.js';
+import { detectLevel, presetForLevel, describe, resolve, sparkCap, SHADOW_MAP, SPARK_MAX, MOTE_MAX } from './gfx.js';
+
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
 
 const LAYER_ENV = 0;
 const LAYER_PICK = 1;   // raycast-only interaction layer
@@ -161,8 +170,16 @@ export class GalleryRenderer {
     this.gpu = GalleryRenderer._gpuName(this.renderer);
     const mobile = (navigator.maxTouchPoints || 0) > 0 && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
       || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-    this.detected = detectPreset(this.gpu, mobile);
-    this.q = resolve({}, this.detected);
+    // StarHermit hardware level (js/gpu-level.js): renderer string + device facts (phone/tablet, cores,
+    // memory, screen); phones and tablets are capped at level 9 (Balanced).
+    let sys = { mobile: !!mobile, webgl2: this.renderer.capabilities.isWebGL2 };
+    try {
+      const G = globalThis.StarHermitGpu;
+      if (G) { const d = G.detectSystem(); sys = { ...d, mobile: sys.mobile || d.mobile, webgl2: sys.webgl2 }; }
+    } catch (e) { /* defaults */ }
+    this.gpuLevel = detectLevel(this.gpu, sys);
+    this.detected = presetForLevel(this.gpuLevel);
+    this.q = resolve({}, this.detected, this.gpuLevel);
     this.tierName = this.q.preset;
 
     this.scene = new THREE.Scene();
@@ -237,6 +254,22 @@ export class GalleryRenderer {
     });
   }
 
+  /**
+   * A lit material for the preset's shading budget: MeshPhysicalMaterial on High/Ultra, the same
+   * parameters without clearcoat/IOR as MeshStandardMaterial on Balanced, and MeshLambertMaterial (colour,
+   * maps, transparency and emission kept) on Low.
+   */
+  _lit(params) {
+    const tier = this.q.budget.material;
+    if (tier === 'physical') return new THREE.MeshPhysicalMaterial(params);
+    const std = {};
+    for (const [k, v] of Object.entries(params)) if (!/^(clearcoat|ior|sheen)/.test(k)) std[k] = v;
+    if (tier === 'standard') return new THREE.MeshStandardMaterial(std);
+    const lam = {};
+    for (const [k, v] of Object.entries(std)) if (!/^(roughness|metalness|envMapIntensity)$/.test(k)) lam[k] = v;
+    return new THREE.MeshLambertMaterial(lam);
+  }
+
   // -------------------------------------------------------------- build --
 
   /**
@@ -284,7 +317,7 @@ export class GalleryRenderer {
     this._envGroup.add(rim);
 
     // Floor: broad disc; detailed = polished terrazzo with roughness variation.
-    const floorMat = new THREE.MeshStandardMaterial({ color: t.floor, roughness: 0.85, metalness: 0.05 });
+    const floorMat = this._lit({ color: t.floor, roughness: 0.85, metalness: 0.05 });
     if (detailed) {
       const tex = this._floorTexture();
       floorMat.map = tex;
@@ -297,15 +330,15 @@ export class GalleryRenderer {
     floor.position.y = -0.15;
     floor.receiveShadow = true;
     this._envGroup.add(floor);
-    const ringMat = new THREE.MeshStandardMaterial({ color: t.floorAccent, roughness: 0.7 });
+    const ringMat = this._lit({ color: t.floorAccent, roughness: 0.7 });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.05, 8, 64), ringMat);
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.01;
     this._envGroup.add(ring);
 
     // Back wall panels (instanced — repeated environment modules).
-    const panelCount = detailed ? 11 : 5; // odd: a panel always sits behind the board
+    const panelCount = detailed ? this.q.budget.panels : 5; // odd: a panel always sits behind the board
     const panelGeo = new THREE.BoxGeometry(1.6, 5.5, 0.18);
-    const panelMat = new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.8 });
+    const panelMat = this._lit({ color: t.wall, roughness: 0.8 });
     const panels = new THREE.InstancedMesh(panelGeo, panelMat, panelCount);
     const m = new THREE.Matrix4();
     const panelAt = (i) => (i / (panelCount - 1) - 0.5) * Math.PI * 0.9;
@@ -320,7 +353,7 @@ export class GalleryRenderer {
 
     if (detailed) {
       // Gallery light strips between the panels: HDR emissive so bloom catches them.
-      const stripMat = new THREE.MeshStandardMaterial({
+      const stripMat = this._lit({
         color: 0x000000, emissive: new THREE.Color(t.keyLight), emissiveIntensity: 2.2, roughness: 1,
       });
       // Skip the seam straight behind the board so no strip cuts through the play area.
@@ -354,16 +387,16 @@ export class GalleryRenderer {
       this._envGroup.add(pool);
 
       // Kinetic sculpture mobiles: slow deterministic spin (paused when hidden).
-      const count = 3;
+      const count = this.q.budget.mobiles;
       for (let i = 0; i < count; i++) {
         const mobile = new THREE.Group();
-        const armMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.35, metalness: 0.7 });
+        const armMat = this._lit({ color: t.pedestal, roughness: 0.35, metalness: 0.7 });
         const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6), armMat);
         arm.rotation.z = Math.PI / 2;
         mobile.add(arm);
         for (const side of [-0.8, 0.8]) {
           const dropGeo = new THREE.IcosahedronGeometry(0.09 + this._decorRng.float() * 0.06, 0);
-          const dropMat = new THREE.MeshStandardMaterial({
+          const dropMat = this._lit({
             color: new THREE.Color(t.keyLight).multiplyScalar(0.9), roughness: 0.22, metalness: 0.85,
           });
           const drop = new THREE.Mesh(dropGeo, dropMat);
@@ -382,8 +415,10 @@ export class GalleryRenderer {
 
   /** Grayscale terrazzo speckle (≈1.0 so the theme colour is preserved). */
   _floorTexture() {
-    if (this._floorTex) return this._floorTex;
-    const N = 256;
+    const N = this.q.budget.floorTex; // authored at 256 px; the noise is sampled in 256-px units
+    if (this._floorTex && this._floorTex.image.width === N) return this._floorTex;
+    if (this._floorTex) this._floorTex.dispose();
+    const u = 256 / N;
     const c = document.createElement('canvas');
     c.width = c.height = N;
     const ctx = c.getContext('2d');
@@ -391,9 +426,9 @@ export class GalleryRenderer {
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         // Two octaves of smooth noise + sparse chips.
-        const n1 = this._vnoise(x / 32, y / 32, 8), n2 = this._vnoise(x / 8, y / 8, 32);
+        const n1 = this._vnoise(x * u / 32, y * u / 32, 8), n2 = this._vnoise(x * u / 8, y * u / 8, 32);
         let v = 0.86 + n1 * 0.08 + n2 * 0.04;
-        const chip = hash2(x, y);
+        const chip = hash2(Math.floor(x * u), Math.floor(y * u));
         if (chip > 0.985) v += 0.12; else if (chip < 0.012) v -= 0.1;
         const b = Math.max(0, Math.min(255, Math.round(v * 255)));
         const k = (y * N + x) * 4;
@@ -472,18 +507,18 @@ export class GalleryRenderer {
     // Detailed: physical glass / lacquered pedestals (reflections come from
     // scene.environment). Plain keeps the cheaper standard materials.
     const detailed = this.q.detail === 'detailed';
-    const tubeGlass = detailed ? new THREE.MeshPhysicalMaterial({
+    const tubeGlass = detailed ? this._lit({
       color: 0xdfe8f0, transparent: true, opacity: 0.14, roughness: 0.05,
       metalness: 0, side: THREE.DoubleSide, depthWrite: false,
       ior: 1.5, envMapIntensity: 0.35,
-    }) : new THREE.MeshPhysicalMaterial({
+    }) : this._lit({
       color: 0xdfe8f0, transparent: true, opacity: 0.16, roughness: 0.08,
       metalness: 0, side: THREE.DoubleSide, depthWrite: false, envMapIntensity: 0.35,
     });
-    const rimMat = new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.3, metalness: 0.6, envMapIntensity: 0.6 });
-    const baseMat = detailed ? new THREE.MeshPhysicalMaterial({
+    const rimMat = this._lit({ color: t.pedestal, roughness: 0.3, metalness: 0.6, envMapIntensity: 0.6 });
+    const baseMat = detailed ? this._lit({
       color: t.pedestal, roughness: 0.45, metalness: 0.3, clearcoat: 0.5, clearcoatRoughness: 0.3, envMapIntensity: 0.4,
-    }) : new THREE.MeshStandardMaterial({ color: t.pedestal, roughness: 0.5, metalness: 0.3, envMapIntensity: 0.4 });
+    }) : this._lit({ color: t.pedestal, roughness: 0.5, metalness: 0.3, envMapIntensity: 0.4 });
 
     for (let i = 0; i < n; i++) {
       const g = new THREE.Group();
@@ -567,15 +602,16 @@ export class GalleryRenderer {
     const color = new THREE.Color(def ? def.hex : '#ffffff');
     // Lacquered orb: clearcoat catches crisp highlights from the environment.
     const detailed = this.q.detail === 'detailed';
-    const mat = detailed ? new THREE.MeshPhysicalMaterial({
+    const mat = detailed ? this._lit({
       color, roughness: 0.3, metalness: 0.08,
       clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 0.55,
       emissive: color.clone().multiplyScalar(0.0),
-    }) : new THREE.MeshStandardMaterial({
+    }) : this._lit({
       color, roughness: 0.32, metalness: 0.12, envMapIntensity: 0.55,
       emissive: color.clone().multiplyScalar(0.0),
     });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(ORB_R, detailed ? 32 : 24, detailed ? 24 : 18), mat);
+    const seg = this.q.budget.orbSeg;
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(ORB_R, seg, Math.round(seg * 0.75)), mat);
     mesh.castShadow = true;
     // Shape glyph reinforces color (accessibility): camera-facing sprite.
     if (def) {
@@ -778,7 +814,7 @@ export class GalleryRenderer {
 
   /** Pooled particle burst (bounded by tier; never raycastable). */
   burst(tubeIndex, colorHex, count, big) {
-    const budget = PARTICLE_BUDGET[this.q.particles] || 0;
+    const budget = sparkCap(this.q);
     if (this.reducedMotion || budget === 0) return;
     const pos = this._tubeGroups[tubeIndex] ? this._tubeGroups[tubeIndex].position : new THREE.Vector3();
     const alive = this._particlePool.all.length - this._particlePool.free;
@@ -797,7 +833,7 @@ export class GalleryRenderer {
   }
 
   _initParticles() {
-    const MAX = 2000; // hard cap; tiers gate how many may spawn
+    const MAX = SPARK_MAX; // allocated at the largest budget; sparkCap(q) gates how many may spawn
     const geo = new THREE.BufferGeometry();
     this._pPos = new Float32Array(MAX * 3);
     this._pCol = new Float32Array(MAX * 3);
@@ -808,6 +844,7 @@ export class GalleryRenderer {
       map: this._radialTexture(), blending: THREE.AdditiveBlending,
     });
     this._points = new THREE.Points(geo, mat);
+    geo.setDrawRange(0, sparkCap(this.q));
     this._points.layers.set(LAYER_FX);
     this._points.frustumCulled = false;
     this._fxGroup.add(this._points);
@@ -1022,7 +1059,7 @@ export class GalleryRenderer {
   // ------------------------------------------------------------ dust motes --
 
   _initMotes() {
-    const N = 140;
+    const N = MOTE_MAX; // allocated at the largest budget; the preset draws q.budget.motes of them
     const pos = new Float32Array(N * 3);
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -1037,6 +1074,7 @@ export class GalleryRenderer {
       size: 0.035, map: this._radialTexture(), color: 0xffe0b8, transparent: true, opacity: 0.35,
       depthWrite: false, blending: THREE.AdditiveBlending,
     });
+    geo.setDrawRange(0, this.q.budget.motes);
     this._motes = new THREE.Points(geo, mat);
     this._motes.layers.set(LAYER_FX);
     this._motes.frustumCulled = false;
@@ -1048,7 +1086,8 @@ export class GalleryRenderer {
     if (!this._motes || !this._motes.visible) return;
     const a = this._motes.geometry.attributes.position;
     const p = a.array;
-    for (let i = 0; i < p.length; i += 3) {
+    const live = Math.min(MOTE_MAX, this.q.budget.motes) * 3;
+    for (let i = 0; i < live; i += 3) {
       p[i + 1] += dt * (0.05 + (i % 7) * 0.008);
       p[i] += Math.sin(this._elapsed * 0.3 + i) * dt * 0.03;
       if (p[i + 1] > 5) p[i + 1] = 0;
@@ -1107,7 +1146,7 @@ export class GalleryRenderer {
 
   _postKey(w, h) {
     const g = this.q;
-    return g.post && !this.postFailed ? [g.ao, g.bloom, g.grade, g.antialias, w, h, this.pixelRatio].join('|') : 'none';
+    return g.post && !this.postFailed ? [g.ao, g.bloom, g.grade, g.antialias, g.budget.aoRes, g.budget.bloomRes, w, h, this.pixelRatio].join('|') : 'none';
   }
 
   _buildPost(w, h) {
@@ -1139,11 +1178,11 @@ export class GalleryRenderer {
             if (o.isSprite || o.userData.noAO || (o.material && o.material.transparent)) o.visible = false;
           });
         };
-        composer.addPass(ao);
+        composer.addPass(atScale(ao, g.budget.aoRes));
       }
       if (g.bloom === 'on') {
         // High threshold: only emissive strips, selection glow and specular highlights bloom.
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.4, 0.88));
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.4, 0.88), g.budget.bloomRes));
       }
       if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
       composer.addPass(new OutputPass());
@@ -1205,7 +1244,7 @@ export class GalleryRenderer {
     if (key === this._gfxKey) return;
     this._gfxKey = key;
     const prev = this.q;
-    const g = resolve(saved || {}, this.detected);
+    const g = resolve(saved || {}, this.detected, this.gpuLevel);
     this.q = g;
     this.tierName = g.preset;
     this.adaptiveScale = 1;
@@ -1217,8 +1256,15 @@ export class GalleryRenderer {
     this._fpsVisible(g.showFps);
     this._applyShadows();
     this._applyReflections();
-    if (this._motes) this._motes.visible = g.background === 'animated';
-    if (this._state && prev.detail !== g.detail && this.theme) {
+    if (this._motes) {
+      this._motes.visible = g.background === 'animated';
+      this._motes.geometry.setDrawRange(0, g.budget.motes);
+    }
+    // Sparks spawn into the lowest free slots, so the live ones always sit inside the preset's cap.
+    if (this._points) this._points.geometry.setDrawRange(0, sparkCap(g));
+    // Scene assets depend on the detail tier and the preset's budget: a change rebuilds them.
+    const assets = (q) => [q.detail, q.budget.material, q.budget.orbSeg, q.budget.floorTex, q.budget.panels, q.budget.mobiles].join('|');
+    if (this._state && assets(prev) !== assets(g) && this.theme) {
       const sel = this._selected, hint = this._hint;
       this._buildEnvironment();
       this._rebuildBoard(this._state);
@@ -1234,6 +1280,7 @@ export class GalleryRenderer {
     const px = [Math.round(this._size[0] * this.pixelRatio), Math.round(this._size[1] * this.pixelRatio)];
     return {
       gpu: this.gpu || 'unknown GPU',
+      level: this.gpuLevel,
       detected: this.detected,
       resolved: this.q,
       summary: describe(this.q, this._size[0] > 1 && this._size[1] > 1 ? px : null),

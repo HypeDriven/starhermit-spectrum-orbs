@@ -7,18 +7,19 @@
   const DEFAULTS = { master: .8, music: .7, effects: 1, ui: .8, maxConcurrentSounds: 'auto', muted: false };
   const finite = n => typeof n === 'number' && Number.isFinite(n);
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-  function recommend(nav = {}) {
+  function recommend(nav = {}, mobile = false) {
+    if (mobile) return 16; // phones and tablets: heat and battery (wiki audio-options, 2026-10)
     const cores = finite(nav.hardwareConcurrency) && nav.hardwareConcurrency > 0 ? nav.hardwareConcurrency : null;
     const memory = finite(nav.deviceMemory) && nav.deviceMemory > 0 ? nav.deviceMemory : null;
     return cores !== null && cores <= 2 || memory !== null && memory <= 2 ? 16 : cores !== null && cores >= 4 ? 64 : 32;
   }
-  function resolveAudio(saved = {}, nav = {}) {
+  function resolveAudio(saved = {}, nav = {}, mobile = false) {
     const out = { ...DEFAULTS };
     for (const bus of ['master', 'music', 'effects', 'ui']) if (finite(saved?.[bus])) out[bus] = clamp(saved[bus], 0, 1);
     out.muted = saved?.muted === true;
     out.soundLimitMode = ['auto', 'fixed', 'custom'].includes(saved?.soundLimitMode) ? saved.soundLimitMode : 'auto';
     if (Number.isInteger(saved?.maxConcurrentSounds) && saved.maxConcurrentSounds > 0) out.maxConcurrentSounds = clamp(saved.maxConcurrentSounds, 1, 64);
-    out.recommendedConcurrentSounds = recommend(nav);
+    out.recommendedConcurrentSounds = recommend(nav, mobile);
     out.effectiveConcurrentSounds = out.maxConcurrentSounds === 'auto' ? out.recommendedConcurrentSounds : out.maxConcurrentSounds;
     return out;
   }
@@ -63,29 +64,45 @@
   const profile = gpuProfile(detectGpu());
   const fpsKey = profile ? `${game}.graphics.gpu.${profile}` : null;
   const fpsSlot = profile ? `graphics.gpu.${profile}` : null;
+  // Phone or tablet: Chromium's mobile hint or a coarse primary pointer (the wiki graphics module's signal).
+  const mobile = (() => { try { return !!root.navigator.userAgentData?.mobile || !!root.matchMedia?.('(pointer: coarse)').matches; } catch { return false; } })();
   let audioRecord = read(audioKey) || { saved: {}, at: 0 };
   let fpsRecord = fpsKey && read(fpsKey) || { saved: {}, at: 0 };
-  let audio = resolveAudio(audioRecord.saved, root.navigator);
+  let audio = resolveAudio(audioRecord.saved, root.navigator, mobile);
   let maxFps = resolveFps(fpsRecord.saved?.maxFps);
   let frameTime = null;
   let clocks = new WeakMap();
   const primitiveClocks = new Map();
   const nativeRaf = root.requestAnimationFrame.bind(root);
   // Preserve every callback and its timestamp; only drawing uses the ceiling.
+  // Display refresh spacing, measured from animation callbacks (browsers don't report the rate).
+  let lastTick = null, gaps = [];
   root.requestAnimationFrame = callback => nativeRaf(now => {
+    if (lastTick !== null && now > lastTick && now - lastTick < 1000) gaps = [...gaps.slice(-15), now - lastTick];
+    if (lastTick === null || now > lastTick) lastTick = now;
     const previous = frameTime; frameTime = now;
     try { callback(now); } finally { frameTime = previous; }
   });
+  // Auto on a phone or tablet renders every second display refresh (wiki graphics-options, 2026-10):
+  // 30 FPS at 60 Hz, 60 at 120 Hz. Below 50 Hz (throttled callbacks) every callback renders.
+  function halfRefreshFps() {
+    if (!mobile || maxFps) return 0;
+    const refresh = [...gaps].sort((a, b) => a - b)[gaps.length >> 2] || 0;
+    return refresh > 0 && refresh <= 20 ? 1000 / (refresh * 2) : 0;
+  }
+  function limitFps() { return maxFps || halfRefreshFps(); }
   function shouldRender(key) {
-    if (!maxFps || frameTime === null) return true;
+    const limit = limitFps();
+    if (!limit || frameTime === null) return true;
     const store = key && (typeof key === 'object' || typeof key === 'function') ? clocks : primitiveClocks;
     let clock = store.get(key);
     if (!clock) { clock = { at: frameTime, frame: frameTime, due: true }; store.set(key, clock); return true; }
     if (clock.frame === frameTime) return clock.due;
     clock.frame = frameTime;
-    const interval = 1000 / maxFps;
+    const interval = 1000 / limit;
     const elapsed = frameTime - clock.at;
-    clock.due = elapsed >= interval - .001 || elapsed < 0;
+    // Half-refresh pacing is judged by time with slack, so a missed refresh isn't skipped again.
+    clock.due = elapsed >= interval - (maxFps ? .001 : interval * .25) || elapsed < 0;
     if (clock.due) clock.at = elapsed > interval * 10 || elapsed < 0 ? frameTime : clock.at + Math.floor((elapsed + .001) / interval) * interval;
     return clock.due;
   }
@@ -103,13 +120,14 @@
     if (frameTime - stats.at >= 500) { stats.fps = stats.count * 1000 / (frameTime - stats.at); stats.count = 0; stats.at = frameTime; }
   }
   function displayFps(reported) {
-    if (!maxFps) return reported;
+    const limit = Math.round(limitFps());
+    if (!limit) return reported;
     const stats = primaryCanvas && paintStats.get(primaryCanvas);
     if (stats?.fps) {
       if ((root.performance?.now() || stats.frame) - stats.frame > 1000) return 0;
-      return Math.min(maxFps, Math.round(stats.fps));
+      return Math.min(limit, Math.round(stats.fps));
     }
-    return Math.min(maxFps, reported);
+    return Math.min(limit, reported);
   }
   function draw(renderer, callback) {
     const key = renderer?.domElement || renderer?.renderer?.domElement || renderer;
@@ -355,7 +373,7 @@
           if (values[fpsSlot].at > fpsRecord.at) { fpsRecord = values[fpsSlot]; fpsDirty = false; write(fpsKey, fpsRecord); }
           else if (fpsRecord.at > values[fpsSlot].at) fpsDirty = true;
         } else if (fpsKey && fpsRecord.at) fpsDirty = true;
-        audio = resolveAudio(audioRecord.saved, root.navigator); maxFps = resolveFps(fpsRecord.saved?.maxFps); clocks = new WeakMap(); primitiveClocks.clear();
+        audio = resolveAudio(audioRecord.saved, root.navigator, mobile); maxFps = resolveFps(fpsRecord.saved?.maxFps); clocks = new WeakMap(); primitiveClocks.clear();
         cloudReady = true; updatePlayback(); refreshPanels(); scheduleCloud();
       } catch { cloudReady = false; } finally { loading = null; }
     })();
@@ -392,19 +410,21 @@
     hintNextSource(hint) { nextSourceHint = hint; Promise.resolve().then(() => { nextSourceHint = null; }); },
     tagBus(node, name) { if (node && typeof node === 'object' && name !== 'master') buses.set(node, classify(name === 'ambience' ? 'music' : name)); return node; },
     setAudio, setFps,
-    get audio() { return { ...audio }; }, get maxFps() { return maxFps; },
+    get audio() { return { ...audio }; }, get maxFps() { return maxFps; }, get mobile() { return mobile; },
+    /** True while Auto paces a phone or tablet at half the display refresh rate. */
+    get halfRefresh() { return !maxFps && halfRefreshFps() > 0; }, get effectiveFps() { return limitFps(); },
     get diagnostics() { return { active: active.size, suppressed, limit: audio.effectiveConcurrentSounds }; },
   };
   // Existing module tests run without the browser; generated call sites guard
   // this API accordingly. The browser always loads it before those modules.
 
   const TEXT = {
-    en: ['Sound', 'Master volume', 'Music volume', 'Sound effects volume', 'UI volume', 'Mute', 'Maximum concurrent sounds', 'Auto (detected: {n})', 'Custom', 'Maximum frame rate', 'Auto (refresh rate)', 'Custom FPS', 'Effective limit: {n} (maximum 64)', 'Graphics', 'Report a problem', 'What went wrong?', 'Details (optional)', 'Send report', 'Sending…', 'Report sent. Thank you!', 'Could not send the report. Try again later.', 'Daily report limit reached. Try again tomorrow.'],
-    es: ['Sonido', 'Volumen general', 'Volumen de música', 'Volumen de efectos', 'Volumen de interfaz', 'Silenciar', 'Máximo de sonidos simultáneos', 'Automático (detectado: {n})', 'Personalizado', 'Frecuencia máxima de fotogramas', 'Automática (frecuencia de pantalla)', 'FPS personalizados', 'Límite efectivo: {n} (máximo 64)', 'Gráficos', 'Informar de un problema', '¿Qué ha fallado?', 'Detalles (opcional)', 'Enviar informe', 'Enviando…', 'Informe enviado. ¡Gracias!', 'No se pudo enviar el informe. Inténtalo más tarde.', 'Límite diario de informes alcanzado. Inténtalo mañana.'],
-    de: ['Sound', 'Gesamtlautstärke', 'Musiklautstärke', 'Effektlautstärke', 'Menülautstärke', 'Stummschalten', 'Maximale gleichzeitige Klänge', 'Auto (erkannt: {n})', 'Benutzerdefiniert', 'Maximale Bildrate', 'Auto (Bildschirmfrequenz)', 'Eigene FPS', 'Effektives Limit: {n} (maximal 64)', 'Grafik', 'Problem melden', 'Was ist schiefgelaufen?', 'Details (optional)', 'Bericht senden', 'Wird gesendet …', 'Bericht gesendet. Danke!', 'Bericht konnte nicht gesendet werden. Bitte später erneut versuchen.', 'Tageslimit für Berichte erreicht. Bitte morgen erneut versuchen.'],
-    fr: ['Son', 'Volume général', 'Volume de la musique', 'Volume des effets', 'Volume de l’interface', 'Couper le son', 'Nombre maximal de sons simultanés', 'Auto (détecté : {n})', 'Personnalisé', 'Fréquence d’images maximale', 'Auto (fréquence de l’écran)', 'FPS personnalisés', 'Limite effective : {n} (maximum 64)', 'Graphismes', 'Signaler un problème', 'Qu’est-ce qui n’a pas fonctionné ?', 'Détails (facultatif)', 'Envoyer le signalement', 'Envoi…', 'Signalement envoyé. Merci !', 'Impossible d’envoyer le signalement. Réessayez plus tard.', 'Limite quotidienne de signalements atteinte. Réessayez demain.'],
-    pt: ['Som', 'Volume geral', 'Volume da música', 'Volume dos efeitos', 'Volume da interface', 'Silenciar', 'Máximo de sons simultâneos', 'Automático (detectado: {n})', 'Personalizado', 'Taxa máxima de quadros', 'Automática (taxa da tela)', 'FPS personalizados', 'Limite efetivo: {n} (máximo 64)', 'Gráficos', 'Relatar um problema', 'O que deu errado?', 'Detalhes (opcional)', 'Enviar relato', 'Enviando…', 'Relato enviado. Obrigado!', 'Não foi possível enviar o relato. Tente novamente mais tarde.', 'Limite diário de relatos atingido. Tente novamente amanhã.'],
-    it: ['Audio', 'Volume generale', 'Volume della musica', 'Volume degli effetti', 'Volume dell’interfaccia', 'Silenzia', 'Numero massimo di suoni simultanei', 'Auto (rilevati: {n})', 'Personalizzato', 'Frequenza massima dei fotogrammi', 'Auto (frequenza dello schermo)', 'FPS personalizzati', 'Limite effettivo: {n} (massimo 64)', 'Grafica', 'Segnala un problema', 'Che cosa non ha funzionato?', 'Dettagli (facoltativi)', 'Invia segnalazione', 'Invio…', 'Segnalazione inviata. Grazie!', 'Impossibile inviare la segnalazione. Riprova più tardi.', 'Limite giornaliero di segnalazioni raggiunto. Riprova domani.'],
+    en: ['Sound', 'Master volume', 'Music volume', 'Sound effects volume', 'UI volume', 'Mute', 'Maximum concurrent sounds', 'Auto (detected: {n})', 'Custom', 'Maximum frame rate', 'Auto (refresh rate)', 'Custom FPS', 'Effective limit: {n} (maximum 64)', 'Graphics', 'Report a problem', 'What went wrong?', 'Details (optional)', 'Send report', 'Sending…', 'Report sent. Thank you!', 'Could not send the report. Try again later.', 'Daily report limit reached. Try again tomorrow.', 'Auto (half refresh rate)'],
+    es: ['Sonido', 'Volumen general', 'Volumen de música', 'Volumen de efectos', 'Volumen de interfaz', 'Silenciar', 'Máximo de sonidos simultáneos', 'Automático (detectado: {n})', 'Personalizado', 'Frecuencia máxima de fotogramas', 'Automática (frecuencia de pantalla)', 'FPS personalizados', 'Límite efectivo: {n} (máximo 64)', 'Gráficos', 'Informar de un problema', '¿Qué ha fallado?', 'Detalles (opcional)', 'Enviar informe', 'Enviando…', 'Informe enviado. ¡Gracias!', 'No se pudo enviar el informe. Inténtalo más tarde.', 'Límite diario de informes alcanzado. Inténtalo mañana.', 'Automática (mitad de la frecuencia de pantalla)'],
+    de: ['Sound', 'Gesamtlautstärke', 'Musiklautstärke', 'Effektlautstärke', 'Menülautstärke', 'Stummschalten', 'Maximale gleichzeitige Klänge', 'Auto (erkannt: {n})', 'Benutzerdefiniert', 'Maximale Bildrate', 'Auto (Bildschirmfrequenz)', 'Eigene FPS', 'Effektives Limit: {n} (maximal 64)', 'Grafik', 'Problem melden', 'Was ist schiefgelaufen?', 'Details (optional)', 'Bericht senden', 'Wird gesendet …', 'Bericht gesendet. Danke!', 'Bericht konnte nicht gesendet werden. Bitte später erneut versuchen.', 'Tageslimit für Berichte erreicht. Bitte morgen erneut versuchen.', 'Auto (halbe Bildschirmfrequenz)'],
+    fr: ['Son', 'Volume général', 'Volume de la musique', 'Volume des effets', 'Volume de l’interface', 'Couper le son', 'Nombre maximal de sons simultanés', 'Auto (détecté : {n})', 'Personnalisé', 'Fréquence d’images maximale', 'Auto (fréquence de l’écran)', 'FPS personnalisés', 'Limite effective : {n} (maximum 64)', 'Graphismes', 'Signaler un problème', 'Qu’est-ce qui n’a pas fonctionné ?', 'Détails (facultatif)', 'Envoyer le signalement', 'Envoi…', 'Signalement envoyé. Merci !', 'Impossible d’envoyer le signalement. Réessayez plus tard.', 'Limite quotidienne de signalements atteinte. Réessayez demain.', 'Auto (moitié de la fréquence de l’écran)'],
+    pt: ['Som', 'Volume geral', 'Volume da música', 'Volume dos efeitos', 'Volume da interface', 'Silenciar', 'Máximo de sons simultâneos', 'Automático (detectado: {n})', 'Personalizado', 'Taxa máxima de quadros', 'Automática (taxa da tela)', 'FPS personalizados', 'Limite efetivo: {n} (máximo 64)', 'Gráficos', 'Relatar um problema', 'O que deu errado?', 'Detalhes (opcional)', 'Enviar relato', 'Enviando…', 'Relato enviado. Obrigado!', 'Não foi possível enviar o relato. Tente novamente mais tarde.', 'Limite diário de relatos atingido. Tente novamente amanhã.', 'Automática (metade da taxa da tela)'],
+    it: ['Audio', 'Volume generale', 'Volume della musica', 'Volume degli effetti', 'Volume dell’interfaccia', 'Silenzia', 'Numero massimo di suoni simultanei', 'Auto (rilevati: {n})', 'Personalizzato', 'Frequenza massima dei fotogrammi', 'Auto (frequenza dello schermo)', 'FPS personalizzati', 'Limite effettivo: {n} (massimo 64)', 'Grafica', 'Segnala un problema', 'Che cosa non ha funzionato?', 'Dettagli (facoltativi)', 'Invia segnalazione', 'Invio…', 'Segnalazione inviata. Grazie!', 'Impossibile inviare la segnalazione. Riprova più tardi.', 'Limite giornaliero di segnalazioni raggiunto. Riprova domani.', 'Auto (metà della frequenza dello schermo)'],
   };
   let nextId = 0;
   const panels = new Set();
@@ -462,7 +482,7 @@
     const fps = doc.createElement('div'); fps.className = 'game-options-controls'; fps.dataset.gameOptionsFps = '';
     const keepControlKeys = event => { if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation(); };
     fps.addEventListener('keydown', keepControlKeys);
-    const mode = select([['auto', t[10]], ['custom', t[8]]]); mode.dataset.gameOption = 'frame-rate-mode';
+    const mode = select([['auto', mobile ? t[22] : t[10]], ['custom', t[8]]]); mode.dataset.gameOption = 'frame-rate-mode';
     const limit = number('1', '1000', maxFps || 60); limit.dataset.gameOption = 'max-fps';
     addRow(fps, 9, mode); const limitRow = addRow(fps, 11, limit);
     mode.addEventListener('change', () => setFps(mode.value === 'auto' ? 0 : Number(limit.value) || 60));
@@ -548,7 +568,7 @@
       if (panel.text !== t) {
         panel.text = t; panel.heading.textContent = t[0];
         for (const node of [...panel.fps.querySelectorAll('[data-game-options-label]'), ...panel.sound.querySelectorAll('[data-game-options-label]')]) node.firstElementChild.textContent = t[Number(node.dataset.gameOptionsLabel)];
-        panel.mode.options[0].textContent = t[10]; panel.mode.options[1].textContent = t[8];
+        panel.mode.options[0].textContent = mobile ? t[22] : t[10]; panel.mode.options[1].textContent = t[8];
         panel.sounds.options[4].textContent = t[8];
         panel.reportHeading.textContent = t[14]; panel.reportSend.textContent = t[17];
         // A finished report's status line is in the old language; clear it rather than mix languages.
@@ -590,7 +610,7 @@
       }
       if (host && host !== doc.body && host !== doc.documentElement) mount(host);
     }
-    if (maxFps) for (const meter of doc.querySelectorAll('[id*="fps"], [class*="fps"], [data-fps], #gfx-summary, .gfx-summary')) {
+    if (limitFps()) for (const meter of doc.querySelectorAll('[id*="fps"], [class*="fps"], [data-fps], #gfx-summary, .gfx-summary')) {
       if (meter.children.length || meter.closest('.game-options-controls')) continue;
       const text = meter.textContent;
       const paced = text.replace(/(\d+(?:\.\d+)?)\s*(fps)\b/gi, (_, number, unit) => `${displayFps(Number(number))} ${unit}`);
