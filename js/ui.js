@@ -192,21 +192,34 @@
       if (undoBtn) undoBtn.disabled = !state.limits.undo || !state.undoStack.length || state.status !== 'active';
     }
 
-    /** Navigable DOM mirror of the board (screen-reader + keyboard path). */
+    /** Navigable DOM mirror of the board (screen-reader + keyboard path). One chip per tube,
+     *  updated in place: timed boards refresh it on every clock tick, and a chip rebuilt
+     *  between press and release would lose the click. A chip's orbs are redrawn only when
+     *  its tube changes. */
     updateBoardStatus(state, palette, selected, kbFocus) {
       const root = this.$('#board-status');
-      root.textContent = '';
+      if (root.childElementCount !== state.tubes.length) root.textContent = '';
       state.tubes.forEach((tube, i) => {
-        const chip = document.createElement('span');
-        chip.className = 'tube-chip';
-        const btn = document.createElement('button');
-        btn.type = 'button';
+        let chip = root.children[i];
+        if (!chip) {
+          chip = document.createElement('span');
+          chip.className = 'tube-chip';
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.setAttribute('data-tube', String(i));
+          chip.appendChild(b);
+          root.appendChild(chip);
+        }
+        const btn = chip.firstChild;
         const names = tube.map((c) => colorName(palette[c]));
         btn.setAttribute('aria-label',
           T('Tube {n}: {orbs}, {count} of {capacity}', { n: i + 1, orbs: names.length ? names.join(', ') : T('empty'), count: tube.length, capacity: state.capacity }) +
           (i === selected ? T(', selected') : ''));
-        btn.setAttribute('data-tube', String(i));
         btn.title = T('Tube {n}', { n: i + 1 });
+        const sig = tube.map((c) => (palette[c] ? palette[c].glyph + palette[c].hex : '?')).join(',');
+        if (btn.dataset.orbs === sig && btn.firstChild) return;
+        btn.dataset.orbs = sig;
+        btn.textContent = '';
         const num = document.createElement('span');
         num.textContent = (i + 1) + ' ';
         btn.appendChild(num);
@@ -222,8 +235,6 @@
           e.textContent = '∅'; e.style.opacity = '0.5';
           btn.appendChild(e);
         }
-        chip.appendChild(btn);
-        root.appendChild(chip);
       });
     }
 

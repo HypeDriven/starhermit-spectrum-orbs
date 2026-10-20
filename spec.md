@@ -92,6 +92,7 @@ The Three.js canvas fills the game region but is never the only UI. Menus, text,
 ### Input
 
 - Pointer/touch: raycast only against explicit interaction layers; use pointer capture for drags; cancel safely on lost capture.
+- The board-status chips (one button per tube) are updated in place, never rebuilt: on timed boards the clock refreshes them four times a second, and a chip's orbs are redrawn only when its tube changes, so every press on a chip ends in its click and keyboard focus stays on it.
 - Touch: distinguish tap, drag, and camera gesture by distance/time thresholds; never require multi-touch for core play.
 - Keyboard: directional navigation among legal targets, confirm, cancel, pause, undo/hint where valid, and camera reset.
 - Gamepad: focus navigation, primary/secondary actions, pause, and remappable axes/buttons.
