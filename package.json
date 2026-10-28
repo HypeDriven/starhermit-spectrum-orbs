@@ -1,13 +1,18 @@
 {
   "name": "spectrum-orbs",
   "version": "1.0.0",
-  "description": "Spectrum Orbs — a kinetic sculpture gallery ordering puzzle.",
+  "description": "Spectrum Orbs — a kinetic sculpture gallery ordering puzzle on the StarHermit engine.",
   "private": true,
   "scripts": {
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node --test tests/rules.test.js tests/server.test.js tests/progress.test.mjs tests/i18n.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
     "start": "node server.js",
-    "test": "node --test tests/rules.test.js tests/server.test.js tests/gfx.test.mjs tests/platform.test.js tests/i18n.test.mjs",
-    "test:e2e": "node tests/e2e.mjs",
-    "check": "node --check server.js && node --check js/rng.js && node --check js/rules.js && node --check js/content.js && node --check js/session.js && node --check js/platform.js && node --check js/audio.js && node --check js/ui.js"
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "textures": "node tools/bake-textures.mjs",
+    "plays": "node tools/gen-plays.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0"
