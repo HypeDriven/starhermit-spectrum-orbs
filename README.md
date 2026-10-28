@@ -3,37 +3,30 @@
 A kinetic sculpture gallery ordering puzzle. Move the top orb between tubes
 until every tube holds a single color.
 
-## Run
+A StarHermit engine script game (engine 1.20.1, `engine.minor=20`): one
+package played natively by the StarHermit client and in browsers by the
+engine's web runtime (the `index.html` loader). See `spec.md`.
+
+## Run and check
 
 ```
-npm start          # node server.js -> http://localhost:8080
-```
-
-Or open `index.html` via any static file server. The game is fully playable
-offline (guest practice, journey, daily). Hosted mode activates only when a
-launch token is in the URL (`#game_token=<jwt>`): server-time sync, account
-nickname, cloud saves on the platform slot, read-only platform leaderboard,
-45-minute token refresh.
-
-## Tests
-
-```
-npm test                                   # rules engine unit/property/golden tests
-node --test tests/server.test.js           # authoritative server integration tests
-SMOKE_PORT=8080 node tests/browser-smoke.mjs  # end-to-end headless-Chrome playthrough
+STARHERMIT=~/sh/runtime/1.20.1/starhermit-1.20.1-linux-x86_64/starhermit
+$STARHERMIT .            # play natively
+npm run package          # after every change: web loader + starhermit-files.json
+npm test                 # unit tests + native checks and play scripts
+npm run test:browser     # the packaged game in GPU Chrome (desktop, phone, landscape)
+npm run css              # tools/ui-style.css → assets/ui-style.json
+npm run plays            # regenerate tests/native/*.play from the solver
+npm run textures         # rebake assets/terrazzo-*.png
+npm start                # local dev server (server.js)
 ```
 
 ## Layout
 
-- `index.html`, `css/style.css` — semantic UI shell (screens, overlays, a11y mirror)
-- `js/rng.js` — seeded streams (rules / decor / audio)
-- `js/rules.js` — pure deterministic rules engine (shared client/server)
-- `js/content.js` — 40 journey stages, daily rulesets, challenges, themes, validators
-- `js/session.js` — command dispatch, undo, replay envelopes, snapshots
-- `js/platform.js` — StarHermit host adapter (launch token, time sync, saves, boards)
-- `js/render.js` — Three.js gallery scene (vendored `vendor/three.module.min.js`)
-- `js/audio.js` — synthesized buses and event sounds
-- `js/ui.js` — DOM screens, HUD, settings, help, leaderboards
-- `js/main.js` — bootstrap + game state machine
-- `server.js` — authoritative script (validation, leaderboards, saves)
-- `starhermit.txt` — distribution manifest (`name`, `launch`, `server`)
+- `native/*.ts` — the client: state machine (`main.ts`), screens (`screens.ts`),
+  the 3D gallery (`render.ts`), sound, save/platform, quality tiers, styles, i18n
+- `js/rng.js`, `rules.js`, `content.js`, `session.js` — the pure rules, content and
+  session, shared with `server.js` and the tests
+- `js/progress.js` — save model and migrations; `js/strings.js`, `lang.js`,
+  `sh-strings.js` — the nine locales
+- `score-script.js` — the platform script that range-checks posted scores
