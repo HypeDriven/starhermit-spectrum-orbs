@@ -1,18 +1,49 @@
 name=Spectrum Orbs
 description=Move colored orbs between tubes until each tube contains a single color.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 version=1.0.0
 contentVersion=3
 rulesetVersion=1
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.20.1
+engine.minor=20
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard actions (players rebind keys and pads in the runtime's Options).
+# The gallery is also played with the pointer or a finger: tap a tube (or its
+# number, or its chip in the board-status strip) to lift its top orb, tap
+# another to pour it.
+engine.group.prev=Tubes
+control.prev=ArrowLeft+ArrowUp | Previous tube
+control.next=ArrowRight+ArrowDown | Next tube
 control.confirm=Enter+Space | Select / pour
 control.cancel=Escape | Cancel / close
+engine.group.pause=Round
 control.pause=KeyP | Pause
 control.undo=KeyU | Undo
 control.hint=KeyH | Hint
 control.restart=KeyR | Restart board
 control.camera=KeyC | Reset camera
-control.prev=ArrowLeft+ArrowUp | Previous tube
-control.next=ArrowRight+ArrowDown | Next tube
+
+# Gamepad: the browser build's defaults (A confirm, B cancel, X undo, Y hint,
+# Start pause; D-pad or left stick moves the tube focus), plus Select to
+# restart and the right stick press to reset the camera.
+engine.gamepad.prev=DpadLeft+DpadUp+LeftStickLeft
+engine.gamepad.next=DpadRight+DpadDown+LeftStickRight
+engine.gamepad.confirm=South
+engine.gamepad.cancel=East
+engine.gamepad.pause=Start
+engine.gamepad.undo=West
+engine.gamepad.hint=North
+engine.gamepad.restart=Select
+engine.gamepad.camera=RightStickPress

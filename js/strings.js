@@ -8,17 +8,14 @@
   'use strict';
   var ROWS = [
     // ---- top bar, title, modes
-    ['Skip to board status', 'Ir al estado del tablero', 'Zum Brettstatus springen', 'Aller à l’état du plateau', 'Ir para o status do tabuleiro', 'Vai allo stato del tabellone'],
     ['Spectrum Orbs — home', 'Spectrum Orbs — inicio', 'Spectrum Orbs – Startseite', 'Spectrum Orbs — accueil', 'Spectrum Orbs — início', 'Spectrum Orbs — home'],
     ['Offline', 'Sin conexión', 'Offline', 'Hors ligne', 'Offline', 'Offline'],
     ['Online', 'En línea', 'Online', 'En ligne', 'Online', 'Online'],
     ['Synced', 'Sincronizado', 'Synchronisiert', 'Synchronisé', 'Sincronizado', 'Sincronizzato'],
     ['Saving…', 'Guardando…', 'Wird gespeichert …', 'Enregistrement…', 'Salvando…', 'Salvataggio…'],
-    ['Platform time', 'Hora de la plataforma', 'Plattformzeit', 'Heure de la plateforme', 'Horário da plataforma', 'Ora della piattaforma'],
     ['Help', 'Ayuda', 'Hilfe', 'Aide', 'Ajuda', 'Aiuto'],
     ['Settings', 'Ajustes', 'Einstellungen', 'Paramètres', 'Configurações', 'Impostazioni'],
     ['A kinetic sculpture gallery. Sort every tube to a single color.', 'Una galería de esculturas cinéticas. Ordena cada tubo en un solo color.', 'Eine Galerie kinetischer Skulpturen. Sortiere jede Röhre auf eine einzige Farbe.', 'Une galerie de sculptures cinétiques. Triez chaque tube pour n’y garder qu’une couleur.', 'Uma galeria de esculturas cinéticas. Organize cada tubo com uma só cor.', 'Una galleria di sculture cinetiche. Ordina ogni tubo in un solo colore.'],
-    ['Main menu', 'Menú principal', 'Hauptmenü', 'Menu principal', 'Menu principal', 'Menu principale'],
     ['Play', 'Jugar', 'Spielen', 'Jouer', 'Jogar', 'Gioca'],
     ['Daily Challenge', 'Desafío diario', 'Tagesaufgabe', 'Défi du jour', 'Desafio diário', 'Sfida del giorno'],
     ['All Modes', 'Todos los modos', 'Alle Modi', 'Tous les modes', 'Todos os modos', 'Tutte le modalità'],
@@ -50,8 +47,6 @@
     ['Begin', 'Empezar', 'Beginnen', 'Commencer', 'Começar', 'Inizia'],
     ['← Back', '← Volver', '← Zurück', '← Retour', '← Voltar', '← Indietro'],
     // ---- game screen
-    ['Game', 'Partida', 'Spiel', 'Partie', 'Partida', 'Partita'],
-    ['Objective and progress', 'Objetivo y progreso', 'Ziel und Fortschritt', 'Objectif et progression', 'Objetivo e progresso', 'Obiettivo e progressi'],
     ['Objective', 'Objetivo', 'Ziel', 'Objectif', 'Objetivo', 'Obiettivo'],
     ['Sort each tube to a single color.', 'Ordena cada tubo en un solo color.', 'Sortiere jede Röhre auf eine Farbe.', 'Triez chaque tube pour n’y garder qu’une couleur.', 'Organize cada tubo com uma só cor.', 'Ordina ogni tubo in un solo colore.'],
     ['Level', 'Nivel', 'Level', 'Niveau', 'Nível', 'Livello'],
@@ -62,18 +57,14 @@
     ['Toggle objective panel', 'Mostrar u ocultar el panel de objetivo', 'Zielbereich ein-/ausblenden', 'Afficher ou masquer le panneau d’objectif', 'Mostrar ou ocultar o painel de objetivo', 'Mostra o nascondi il pannello obiettivo'],
     ['Toggle actions panel', 'Mostrar u ocultar el panel de acciones', 'Aktionsbereich ein-/ausblenden', 'Afficher ou masquer le panneau d’actions', 'Mostrar ou ocultar o painel de ações', 'Mostra o nascondi il pannello azioni'],
     ['Skip lesson', 'Saltar lección', 'Lektion überspringen', 'Passer la leçon', 'Pular lição', 'Salta la lezione'],
-    ['Board status', 'Estado del tablero', 'Brettstatus', 'État du plateau', 'Status do tabuleiro', 'Stato del tabellone'],
     ['Actions', 'Acciones', 'Aktionen', 'Actions', 'Ações', 'Azioni'],
     ['Undo', 'Deshacer', 'Rückgängig', 'Annuler', 'Desfazer', 'Annulla'],
     ['Hint', 'Pista', 'Tipp', 'Indice', 'Dica', 'Suggerimento'],
     ['Restart', 'Reiniciar', 'Neu starten', 'Recommencer', 'Reiniciar', 'Ricomincia'],
     ['Camera', 'Cámara', 'Kamera', 'Caméra', 'Câmera', 'Telecamera'],
     ['Pause', 'Pausa', 'Pause', 'Pause', 'Pausar', 'Pausa'],
-    ['Quick actions', 'Acciones rápidas', 'Schnellaktionen', 'Actions rapides', 'Ações rápidas', 'Azioni rapide'],
     // ---- results
     ['Results', 'Resultados', 'Ergebnisse', 'Résultats', 'Resultados', 'Risultati'],
-    ['Medal', 'Medalla', 'Medaille', 'Médaille', 'Medalha', 'Medaglia'],
-    ['Score breakdown', 'Desglose de puntuación', 'Punkteaufschlüsselung', 'Détail du score', 'Detalhes da pontuação', 'Dettaglio del punteggio'],
     ['Total', 'Total', 'Gesamt', 'Total', 'Total', 'Totale'],
     ['Next', 'Siguiente', 'Weiter', 'Suivant', 'Próximo', 'Avanti'],
     ['Retry', 'Reintentar', 'Nochmal', 'Réessayer', 'Tentar de novo', 'Riprova'],
@@ -84,45 +75,32 @@
     ['Leave round', 'Abandonar ronda', 'Runde verlassen', 'Quitter la manche', 'Sair da rodada', 'Abbandona il round'],
     // ---- settings
     ['Audio', 'Audio', 'Audio', 'Audio', 'Áudio', 'Audio'],
-    ['Music', 'Música', 'Musik', 'Musique', 'Música', 'Musica'],
-    ['Effects', 'Efectos', 'Effekte', 'Effets', 'Efeitos', 'Effetti'],
-    ['Ambience', 'Ambiente', 'Atmosphäre', 'Ambiance', 'Ambiente', 'Ambiente'],
-    ['Voice cues', 'Indicaciones de voz', 'Sprachhinweise', 'Repères vocaux', 'Avisos de voz', 'Segnali vocali'],
-    ['Mute all', 'Silenciar todo', 'Alles stumm', 'Tout couper', 'Silenciar tudo', 'Silenzia tutto'],
     ['Graphics', 'Gráficos', 'Grafik', 'Graphismes', 'Gráficos', 'Grafica'],
     ['Default', 'Predeterminada', 'Standard', 'Par défaut', 'Padrão', 'Predefinita'],
     ['Close', 'Cerca', 'Nah', 'Proche', 'Perto', 'Vicina'],
     ['Wide', 'Amplia', 'Weit', 'Large', 'Ampla', 'Ampia'],
-    ['Reduced motion', 'Movimiento reducido', 'Weniger Bewegung', 'Mouvements réduits', 'Movimento reduzido', 'Movimento ridotto'],
     ['Accessibility', 'Accesibilidad', 'Barrierefreiheit', 'Accessibilité', 'Acessibilidade', 'Accessibilità'],
     ['Color palette', 'Paleta de colores', 'Farbpalette', 'Palette de couleurs', 'Paleta de cores', 'Tavolozza dei colori'],
     ['Color-vision safe', 'Apta para daltonismo', 'Farbsehschwäche-geeignet', 'Adaptée au daltonisme', 'Adequada a daltonismo', 'Adatta al daltonismo'],
     ['High contrast', 'Alto contraste', 'Hoher Kontrast', 'Contraste élevé', 'Alto contraste', 'Contrasto elevato'],
-    ['High contrast UI', 'Interfaz de alto contraste', 'Oberfläche mit hohem Kontrast', 'Interface à contraste élevé', 'Interface de alto contraste', 'Interfaccia ad alto contrasto'],
-    ['Larger text', 'Texto más grande', 'Größerer Text', 'Texte plus grand', 'Texto maior', 'Testo più grande'],
     ['Left-handed controls', 'Controles para zurdos', 'Linkshänder-Steuerung', 'Commandes pour gaucher', 'Controles para canhotos', 'Comandi per mancini'],
     ['Hold to select (vs toggle)', 'Mantener para seleccionar (en vez de alternar)', 'Halten zum Auswählen (statt Umschalten)', 'Maintenir pour sélectionner (au lieu de basculer)', 'Segurar para selecionar (em vez de alternar)', 'Tieni premuto per selezionare (invece di alternare)'],
     ['Timing assist (+50% time)', 'Ayuda de tiempo (+50 % de tiempo)', 'Zeithilfe (+50 % Zeit)', 'Aide au temps (+50 % de temps)', 'Ajuda de tempo (+50% de tempo)', 'Aiuto tempo (+50% di tempo)'],
     ['Haptics', 'Vibración', 'Haptik', 'Retour haptique', 'Vibração', 'Vibrazione'],
     ['Replay tutorial', 'Repetir tutorial', 'Tutorial wiederholen', 'Rejouer le tutoriel', 'Repetir tutorial', 'Ripeti il tutorial'],
     ['Controls', 'Controles', 'Steuerung', 'Commandes', 'Controles', 'Comandi'],
-    ['Keyboard and gamepad bindings. Touch uses the on-screen controls.', 'Asignaciones de teclado y control. En táctil se usan los controles en pantalla.', 'Tastatur- und Gamepad-Belegung. Touch nutzt die Bildschirmsteuerung.', 'Touches du clavier et de la manette. Le tactile utilise les commandes à l’écran.', 'Atalhos de teclado e controle. No toque, use os controles na tela.', 'Tasti di tastiera e gamepad. Il touch usa i comandi sullo schermo.'],
     ['Done', 'Listo', 'Fertig', 'Terminé', 'Concluir', 'Fatto'],
     ['How to play', 'Cómo jugar', 'So wird gespielt', 'Comment jouer', 'Como jogar', 'Come si gioca'],
     // ---- scores, profile, compat
     ['Board', 'Tabla', 'Liste', 'Tableau', 'Ranking', 'Classifica'],
     ['Friends only', 'Solo amigos', 'Nur Freunde', 'Amis seulement', 'Só amigos', 'Solo amici'],
     ['Casual board — authoritative validation unavailable offline.', 'Tabla informal: sin conexión no hay validación oficial.', 'Inoffizielle Liste – offline keine verbindliche Prüfung.', 'Tableau informel — validation officielle indisponible hors ligne.', 'Ranking informal — validação oficial indisponível offline.', 'Classifica informale: convalida ufficiale non disponibile offline.'],
-    ['Leaderboard', 'Clasificación', 'Bestenliste', 'Classement', 'Ranking', 'Classifica'],
     ['Player', 'Jugador', 'Spieler', 'Joueur', 'Jogador', 'Giocatore'],
     ['Score', 'Puntuación', 'Punkte', 'Score', 'Pontuação', 'Punteggio'],
     ['Seed', 'Semilla', 'Seed', 'Graine', 'Semente', 'Seme'],
     ['Duration', 'Duración', 'Dauer', 'Durée', 'Duração', 'Durata'],
     ['Achievements', 'Logros', 'Erfolge', 'Succès', 'Conquistas', 'Obiettivi'],
     ['Mastery track', 'Ruta de maestría', 'Meisterpfad', 'Parcours de maîtrise', 'Trilha de maestria', 'Percorso di maestria'],
-    ['3D unavailable', '3D no disponible', '3D nicht verfügbar', '3D indisponible', '3D indisponível', '3D non disponibile'],
-    ['Spectrum Orbs needs WebGL for its gallery view. Your session and progress are saved. You can still play using the accessible board list below, or try a browser with WebGL enabled.', 'Spectrum Orbs necesita WebGL para la vista de la galería. Tu sesión y tu progreso están guardados. Puedes seguir jugando con la lista accesible del tablero de abajo o probar un navegador con WebGL activado.', 'Spectrum Orbs braucht WebGL für die Galerieansicht. Deine Sitzung und dein Fortschritt sind gespeichert. Du kannst mit der barrierefreien Brettliste unten weiterspielen oder einen Browser mit aktiviertem WebGL verwenden.', 'Spectrum Orbs nécessite WebGL pour la vue de la galerie. Votre session et votre progression sont enregistrées. Vous pouvez jouer avec la liste accessible du plateau ci-dessous ou essayer un navigateur avec WebGL activé.', 'Spectrum Orbs precisa de WebGL para a visão da galeria. Sua sessão e seu progresso estão salvos. Você ainda pode jogar com a lista acessível do tabuleiro abaixo ou tentar um navegador com WebGL ativado.', 'Spectrum Orbs richiede WebGL per la vista della galleria. Sessione e progressi sono salvati. Puoi giocare con l’elenco accessibile del tabellone qui sotto o provare un browser con WebGL attivo.'],
-    ['Continue in accessible mode', 'Continuar en modo accesible', 'Im barrierefreien Modus fortfahren', 'Continuer en mode accessible', 'Continuar no modo acessível', 'Continua in modalità accessibile'],
     // ---- invalid moves
     ['This round has ended.', 'Esta ronda terminó.', 'Diese Runde ist vorbei.', 'Cette manche est terminée.', 'Esta rodada terminou.', 'Questo round è finito.'],
     ['That tube does not exist.', 'Ese tubo no existe.', 'Diese Röhre gibt es nicht.', 'Ce tube n’existe pas.', 'Esse tubo não existe.', 'Quel tubo non esiste.'],
@@ -136,12 +114,6 @@
     ['Already applied.', 'Ya aplicado.', 'Bereits angewendet.', 'Déjà appliqué.', 'Já aplicado.', 'Già applicato.'],
     ['That move is not legal.', 'Ese movimiento no es válido.', 'Dieser Zug ist nicht erlaubt.', 'Ce coup n’est pas autorisé.', 'Essa jogada não é válida.', 'Questa mossa non è valida.'],
     // ---- action names (bindings)
-    ['Confirm', 'Confirmar', 'Bestätigen', 'Confirmer', 'Confirmar', 'Conferma'],
-    ['Cancel', 'Cancelar', 'Abbrechen', 'Annuler', 'Cancelar', 'Annulla'],
-    ['Previous tube', 'Tubo anterior', 'Vorherige Röhre', 'Tube précédent', 'Tubo anterior', 'Tubo precedente'],
-    ['Next tube', 'Tubo siguiente', 'Nächste Röhre', 'Tube suivant', 'Próximo tubo', 'Tubo successivo'],
-    ['Rebind {action}', 'Reasignar {action}', '{action} neu belegen', 'Réassigner {action}', 'Reatribuir {action}', 'Riassegna {action}'],
-    ['press key…', 'pulsa una tecla…', 'Taste drücken …', 'appuyez sur une touche…', 'pressione uma tecla…', 'premi un tasto…'],
     // ---- HUD and board mirror
     ['{n} moves left', 'quedan {n} movimientos', 'noch {n} Züge', '{n} coups restants', '{n} jogadas restantes', '{n} mosse rimaste'],
     ['{time} left', 'quedan {time}', 'noch {time}', '{time} restantes', '{time} restantes', '{time} rimasti'],
@@ -205,7 +177,6 @@
     ['Daily — {date}', 'Diario: {date}', 'Tagesaufgabe – {date}', 'Défi du jour — {date}', 'Diário — {date}', 'Sfida del giorno — {date}'],
     ['{name} Practice', 'Práctica {name}', 'Training {name}', 'Entraînement {name}', 'Treino {name}', 'Allenamento {name}'],
     // ---- main.js
-    ['Synced with platform time', 'Sincronizado con la hora de la plataforma', 'Mit der Plattformzeit synchronisiert', 'Synchronisé avec l’heure de la plateforme', 'Sincronizado com o horário da plataforma', 'Sincronizzato con l’ora della piattaforma'],
     ['Resume unfinished round ({name})', 'Reanudar ronda sin terminar ({name})', 'Unfertige Runde fortsetzen ({name})', 'Reprendre la manche inachevée ({name})', 'Continuar rodada inacabada ({name})', 'Riprendi il round in sospeso ({name})'],
     ['Welcome back — away {time}, clock was paused.', 'Bienvenido de nuevo: estuviste fuera {time}, el reloj estaba en pausa.', 'Willkommen zurück – {time} weg, die Uhr war angehalten.', 'Bon retour — absent {time}, le chrono était en pause.', 'Bem-vindo de volta — fora por {time}, o relógio ficou pausado.', 'Bentornato: assente {time}, l’orologio era in pausa.'],
     ['2–5 min', '2–5 min', '2–5 Min.', '2–5 min', '2–5 min', '2–5 min'],
@@ -254,14 +225,12 @@
     ['Round complete. Score {n}.', 'Ronda completada. Puntuación {n}.', 'Runde geschafft. Punktzahl {n}.', 'Manche terminée. Score {n}.', 'Rodada concluída. Pontuação {n}.', 'Round completato. Punteggio {n}.'],
     ['Round over. Score {n}.', 'Ronda terminada. Puntuación {n}.', 'Runde vorbei. Punktzahl {n}.', 'Manche finie. Score {n}.', 'Rodada encerrada. Pontuação {n}.', 'Round finito. Punteggio {n}.'],
     ['Next stage', 'Siguiente etapa', 'Nächste Etappe', 'Étape suivante', 'Próxima fase', 'Tappa successiva'],
-    ['Play Journey', 'Jugar la travesía', 'Reise spielen', 'Jouer le parcours', 'Jogar a jornada', 'Gioca il percorso'],
     ['New practice board', 'Nuevo tablero de práctica', 'Neues Trainingsbrett', 'Nouveau plateau d’entraînement', 'Novo tabuleiro de treino', 'Nuovo tabellone di allenamento'],
     ['Practice a board', 'Practicar un tablero', 'Ein Brett trainieren', 'S’entraîner sur un plateau', 'Treinar um tabuleiro', 'Allenati su un tabellone'],
     ['Next trial', 'Siguiente prueba', 'Nächste Prüfung', 'Épreuve suivante', 'Próxima prova', 'Prova successiva'],
     ['Daily (today)', 'Diario (hoy)', 'Tagesaufgabe (heute)', 'Défi du jour (aujourd’hui)', 'Diário (hoje)', 'Sfida del giorno (oggi)'],
     ['Journey (all stages)', 'Travesía (todas las etapas)', 'Reise (alle Etappen)', 'Parcours (toutes les étapes)', 'Jornada (todas as fases)', 'Percorso (tutte le tappe)'],
     ['Global (platform)', 'Global (plataforma)', 'Global (Plattform)', 'Mondial (plateforme)', 'Global (plataforma)', 'Globale (piattaforma)'],
-    ['Player {id}', 'Jugador {id}', 'Spieler {id}', 'Joueur {id}', 'Jogador {id}', 'Giocatore {id}'],
     // ---- content.js: palette, themes, stages, challenges, practice, lessons, achievements
     ['Coral', 'Coral', 'Koralle', 'Corail', 'Coral', 'Corallo'],
     ['Amber', 'Ámbar', 'Bernstein', 'Ambre', 'Âmbar', 'Ambra'],
@@ -353,7 +322,13 @@
     ['Crowded Wing Cleared', 'Ala abarrotada superada', 'Voller Flügel geschafft', 'Aile bondée réussie', 'Ala lotada concluída', 'Ala affollata superata'],
     ['Complete the Crowded Wing challenge.', 'Completa el desafío Ala abarrotada.', 'Schaffe die Herausforderung „Voller Flügel“.', 'Réussissez le défi Aile bondée.', 'Conclua o desafio Ala lotada.', 'Completa la sfida Ala affollata.'],
     ['Gallery Regular', 'Habitual de la galería', 'Stammgast der Galerie', 'Habitué de la galerie', 'Frequentador da galeria', 'Habitué della galleria'],
-    ['Complete 50 boards in total.', 'Completa 50 tableros en total.', 'Löse insgesamt 50 Bretter.', 'Terminez 50 plateaux au total.', 'Conclua 50 tabuleiros no total.', 'Completa 50 tabelloni in totale.']
+    ['Complete 50 boards in total.', 'Completa 50 tableros en total.', 'Löse insgesamt 50 Bretter.', 'Terminez 50 plateaux au total.', 'Conclua 50 tabuleiros no total.', 'Completa 50 tabelloni in totale.'],
+    // ---- the engine client: the runtime's Options and sync
+    ['Open Options', 'Abrir opciones', 'Optionen öffnen', 'Ouvrir les options', 'Abrir opções', 'Apri le opzioni'],
+    ['Music, effects and mute, graphics quality, language, larger text, high contrast and reduced motion are in the StarHermit Options.', 'La música, los efectos y el silencio, la calidad gráfica, el idioma, el texto más grande, el alto contraste y el movimiento reducido están en las opciones de StarHermit.', 'Musik, Effekte und Stummschaltung, Grafikqualität, Sprache, größere Schrift, hoher Kontrast und reduzierte Bewegung findest du in den StarHermit-Optionen.', 'La musique, les effets et la sourdine, la qualité graphique, la langue, le texte agrandi, le contraste élevé et les animations réduites se trouvent dans les options StarHermit.', 'Música, efeitos e mudo, qualidade gráfica, idioma, texto maior, alto contraste e movimento reduzido ficam nas opções do StarHermit.', 'Musica, effetti e silenzio, qualità grafica, lingua, testo più grande, contrasto elevato e movimento ridotto si trovano nelle opzioni di StarHermit.'],
+    ['Key bindings', 'Asignación de teclas', 'Tastenbelegung', 'Raccourcis clavier', 'Atalhos de teclado', 'Assegnazione tasti'],
+    ['Keys and gamepad buttons are rebound in the StarHermit Options.', 'Las teclas y los botones del mando se reasignan en las opciones de StarHermit.', 'Tasten und Gamepad-Knöpfe werden in den StarHermit-Optionen neu belegt.', 'Les touches et les boutons de manette se réattribuent dans les options StarHermit.', 'Teclas e botões do controle são reatribuídos nas opções do StarHermit.', 'Tasti e pulsanti del controller si riassegnano nelle opzioni di StarHermit.'],
+    ['Progress synced from your account.', 'Progreso sincronizado desde tu cuenta.', 'Fortschritt aus deinem Konto synchronisiert.', 'Progression synchronisée depuis votre compte.', 'Progresso sincronizado da sua conta.', 'Progressi sincronizzati dal tuo account.'],
   ];
 
   var COLS = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
@@ -381,7 +356,6 @@
   };
   T['es-ES'] = {
     'Pause: {pause} · Restart: {restart} · Camera: {camera} · Gamepad: D-pad moves focus, bottom button confirms.': 'Pausa: {pause} · Reiniciar: {restart} · Cámara: {camera} · Mando: la cruceta mueve el foco y el botón inferior confirma.',
-    'Keyboard and gamepad bindings. Touch uses the on-screen controls.': 'Asignaciones de teclado y mando. En táctil se usan los controles en pantalla.',
     'Welcome back — away {time}, clock was paused.': 'Hola de nuevo: has estado fuera {time}, el reloj estaba en pausa.',
     'This round has ended.': 'Esta ronda ha terminado.',
     'That board locked up — let’s try the lesson again.': 'Ese tablero se ha bloqueado: volvamos a intentar la lección.',
@@ -393,7 +367,6 @@
     'Scores & Friends': 'Pointages et amis',
     'Score': 'Pointage',
     'Score Chase': 'Course aux pointages',
-    'Score breakdown': 'Détail du pointage',
     'Scored per stage · ~2–5 min each': 'Pointage par étape · ~2–5 min chacune',
     'One shared seed for everyone, per UTC day. Compare scores with friends.': 'Une graine commune à tous chaque jour UTC. Comparez vos pointages avec vos amis.',
     'No scores yet — be the first.': 'Aucun pointage pour l’instant — soyez le premier.',
@@ -403,4 +376,4 @@
   };
 
   root.SO_STRINGS = T;
-})(typeof self !== 'undefined' ? self : this);
+})(globalThis);

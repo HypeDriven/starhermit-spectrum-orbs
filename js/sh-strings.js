@@ -1,11 +1,12 @@
 /**
  * sh-strings.js — localized strings for the StarHermit account controls
- * (sign-in, invite link, sign-out notice, key-binding reset, leaderboard
- * line). main.js passes the game language (window.SOI18N.lang).
+ * (sign-in, invite link, sign-out notice, leaderboard line), per locale.
+ * Classic script: globalThis.SO_SH_STRINGS (loadClassic) / Node (require).
  */
-import { pickLocale } from './gfx-panel.js';
+(function (root) {
+'use strict';
 
-const EN = {
+var EN = {
   signIn: 'Sign in with StarHermit',
   invite: 'Invite a friend',
   copied: 'Invite link copied',
@@ -17,7 +18,7 @@ const EN = {
   lbPosted: 'Score posted to the leaderboard.',
   lbNotPosted: 'Score not posted to the leaderboard.',
 };
-const ES = {
+var ES = {
   signIn: 'Iniciar sesión con StarHermit',
   invite: 'Invitar a un amigo',
   copied: 'Enlace de invitación copiado',
@@ -29,7 +30,7 @@ const ES = {
   lbPosted: 'Puntuación publicada en la clasificación.',
   lbNotPosted: 'La puntuación no se ha publicado en la clasificación.',
 };
-const FR = {
+var FR = {
   signIn: 'Se connecter avec StarHermit',
   invite: 'Inviter un ami',
   copied: 'Lien d’invitation copié',
@@ -42,7 +43,7 @@ const FR = {
   lbNotPosted: 'Score non publié au classement.',
 };
 
-export const SH_STRINGS = {
+var SH_STRINGS = {
   'en-US': EN, 'en-GB': EN, 'es-419': { ...ES, lbNotPosted: 'La puntuación no se publicó en la clasificación.' }, 'es-ES': ES,
   'de-DE': {
     signIn: 'Mit StarHermit anmelden',
@@ -84,4 +85,6 @@ export const SH_STRINGS = {
   },
 };
 
-export function shStrings(tag) { return SH_STRINGS[pickLocale(tag)] || EN; }
+if (typeof module === 'object' && module.exports) module.exports = SH_STRINGS;
+root.SO_SH_STRINGS = SH_STRINGS;
+})(globalThis);
