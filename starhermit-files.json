@@ -22,7 +22,7 @@
     "native/platform.ts": {"sha256": "9498c9be4e8efe0f912f1fd40188b49874c142c10379de6fe095c435ba0400f4", "size": 12037},
     "native/quality.ts": {"sha256": "9f9dbaea8ceb7d5424e967d39902efa7313badc3d06361a9c73348c250026bad", "size": 4057},
     "native/render.ts": {"sha256": "2e37bdc817017feed5ea846fc746097ecfc3b31ec8857028cc6474c496e858b3", "size": 37790},
-    "native/screens.ts": {"sha256": "dbc74fbb88c44df5c8de2c2b0b0c7fa38565ed1f2233fc8241692a8c24e62979", "size": 52623},
+    "native/screens.ts": {"sha256": "cd8f2b02aa613b48afdcd55c052b62145b6943be9b419011d7c3b2b9cc662848", "size": 52633},
     "native/style.ts": {"sha256": "06cb9b1cf1ac087313d5663afdcc3141cf3b9b136f131d8aed5ddb351205f698", "size": 3254},
     "score-script.js": {"sha256": "762eda4323fbe38bb29abf1117ec1d637253e288024f9aa8fcb5735b81ef2902", "size": 2488},
     "sfx/hint-chime.opus": {"sha256": "af4d12a4d026a7537b86f47cbefc7179bbdef9cdc836b6f49c15ca75eca82efd", "size": 13165},

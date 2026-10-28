@@ -612,7 +612,7 @@ function boardStatus(L: Layout, fb: Box): void {
   const sz = sizeOf("board-status", L.sc);
   const w = sz?.w ?? maxW;
   ui.place("board-status-wrap", { anchor: "top-start", x: fb.x + (fb.w - w) / 2, y: fb.y + fb.h - 8 - (sz?.h ?? 40) }, () => {
-    const chipW = (tube: number[]): number => 28 + tube.length * 15 + (tube.length ? 0 : 12);
+    const chipW = (tube: number[]): number => 28 + tube.length * 17 + (tube.length ? 0 : 12);
     const rows: number[][] = [[]];
     let used = 0;
     st.tubes.forEach((tube, i) => {
@@ -639,7 +639,7 @@ function boardStatus(L: Layout, fb: Box): void {
               draw.text(`${i + 1}`, rr.x + 6 * s, cy, { size: 12.5 * s, color: token("ink"), font: "sans-serif" });
               tube.forEach((c, k) => {
                 const def = pal[c];
-                draw.text(def ? def.glyph : "?", rr.x + (22 + k * 15 + 6) * s, cy, { size: 12.5 * s, color: def ? def.hex : "#ffffff", align: "center", font: "sans-serif" });
+                draw.text(def ? def.glyph : "?", rr.x + (22 + k * 17 + 7) * s, cy - 1.5 * s, { size: 15.5 * s, color: def ? def.hex : "#ffffff", align: "center", font: "sans-serif" });
               });
               if (!tube.length) draw.text("∅", rr.x + 26 * s, cy, { size: 12.5 * s, color: "#ffffff80", align: "center", font: "sans-serif" });
             },

@@ -13,8 +13,9 @@ const unq = (s) => s.replace(/\\'/g, "'").replace(/\\"/g, '"');
 /** Load the translation tables from a classic-script strings file. */
 export function loadTables(root, file, globalName) {
   const sandbox = { self: {} };
+  sandbox.globalThis = sandbox;
   vm.runInNewContext(readFileSync(new URL(file, root), 'utf8'), sandbox);
-  return sandbox.self[globalName];
+  return sandbox[globalName] ?? sandbox.self[globalName];
 }
 
 /** English keys used in code: T('…'), N('…') (deferred), and T(c ? '…' : '…'). */
@@ -95,26 +96,3 @@ export function audit(tables, used) {
   return problems;
 }
 
-/** Build a sandbox with sh-language.js + strings + i18n loaded; returns the game's I18N global. */
-export function bootI18n(root, { strings, i18n, global, languages = ['de-DE'] }) {
-  const events = [];
-  const doc = {
-    documentElement: { lang: 'en' }, body: null,
-    dispatchEvent: (e) => events.push(e.detail.lang),
-    addEventListener() {},
-  };
-  const sandbox = {
-    document: doc, location: { search: '' },
-    navigator: { languages, language: languages[0] },
-    localStorage: { getItem: () => null, setItem: () => {} },
-    CustomEvent: class { constructor(t, o) { this.type = t; this.detail = o.detail; } },
-    URLSearchParams,
-  };
-  sandbox.self = sandbox; sandbox.window = sandbox;
-  vm.createContext(sandbox);
-  const read = (p) => readFileSync(new URL(p, root), 'utf8');
-  vm.runInContext(read('sh-language.js'), sandbox);
-  vm.runInContext(read(strings), sandbox);
-  vm.runInContext(read(i18n), sandbox);
-  return { I18N: sandbox[global], events, doc };
-}
