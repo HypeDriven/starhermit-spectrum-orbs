@@ -3,14 +3,14 @@
 A kinetic sculpture gallery ordering puzzle. Move the top orb between tubes
 until every tube holds a single color.
 
-A StarHermit engine script game (engine 1.20.1, `engine.minor=20`): one
+A StarHermit engine script game (engine 1.22.0, `engine.minor=20`): one
 package played natively by the StarHermit client and in browsers by the
 engine's web runtime (the `index.html` loader). See `spec.md`.
 
 ## Run and check
 
 ```
-STARHERMIT=~/sh/runtime/1.20.1/starhermit-1.20.1-linux-x86_64/starhermit
+STARHERMIT=~/sh/runtime/1.22.0/starhermit-1.22.0-linux-x86_64/starhermit
 $STARHERMIT .            # play natively
 npm run package          # after every change: web loader + starhermit-files.json
 npm test                 # unit tests + native checks and play scripts
