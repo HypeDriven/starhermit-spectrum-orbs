@@ -129,7 +129,7 @@ untracked `data/` directory. It holds the evidence entries used here (`Cheater`)
 
 ## Engine port (2026-10-28)
 
-The browser client was replaced by a StarHermit engine script game (native/*.ts, engine 1.23.0). The rules,
+The browser client was replaced by a StarHermit engine script game (native/*.ts, engine 1.24.0). The rules,
 content and session modules are unchanged, so the resolved defects above stay resolved. Differences from the
 browser build are listed in spec.md under Known limitations. Found while porting (kept, not a regression):
 Learn lesson 2's opening board has both coloured tubes full, so its "colors must match" refusal needs a pour
