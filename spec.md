@@ -2,7 +2,7 @@
 
 **Status:** running specification of the shipped game (present tense).
 **Genre:** ordering puzzle · **Players:** 1, with asynchronous score comparison
-**Platform:** a StarHermit engine script game (TypeScript on the host API, engine 1.24.0, `engine.minor=20`), played natively by the StarHermit client and in browsers by the engine's web runtime; one package for both.
+**Platform:** a StarHermit engine script game (TypeScript on the host API, engine 1.27.0, `engine.minor=29`), played natively by the StarHermit client and in browsers by the engine's web runtime; one package for both.
 **Rendering:** `starhermit:scene` (a port of the three.js r160 gallery) with the whole interface on `starhermit:ui`.
 
 ## 1. Product vision

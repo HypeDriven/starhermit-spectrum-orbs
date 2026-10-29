@@ -19,8 +19,8 @@
 // panels, mobiles, sparks, motes, shadows, reflections, AO, bloom, the grade.
 //
 // From three.js r160 (physically based lights): colours as written, the
-// hemisphere and directional lights' intensities ÷ π (the engine takes
-// three's legacy units). render.js's `new RoomEnvironment(renderer)` (r160) is
+// light intensities as the page (minor 29 follows r155+ units), its fitted
+// shadow box and normalBias. render.js's `new RoomEnvironment(renderer)` (r160) is
 // kept exactly; every lit material carries the environment as its own envMap
 // at its envMapIntensity, as r160's scene.environment applied each material's
 // intensity. The old composer (RenderPass in half floats → GTAO → UnrealBloom
@@ -35,7 +35,7 @@
 import {
   ACESFilmicToneMapping, AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color,
   CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4, Mesh,
-  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, Points,
+  OrthographicCamera,   MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, Points,
   PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, TextureLoader,
   TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
@@ -231,15 +231,15 @@ function buildEnvironment(): void {
   scene.background = new Color(t.sky);
   scene.fog = new Fog(t.fog, 14, 42);
 
-  hemi = new HemisphereLight(t.hemiSky, t.hemiGround, 0.85 / Math.PI);
+  hemi = new HemisphereLight(t.hemiSky, t.hemiGround, 0.85);
   envGroup.add(hemi);
-  const key = new DirectionalLight(t.keyLight, t.keyIntensity / Math.PI);
+  const key = new DirectionalLight(t.keyLight, t.keyIntensity);
   key.position.set(4.5, 8, 5);
   key.shadow.bias = -0.0004;
-  key.shadow.normalBias = 1; // three's 0.02 world units; the engine's normal bias is in texels
+  key.shadow.normalBias = 0.02;
   envGroup.add(key, key.target);
   keyLight = key;
-  const rim = new DirectionalLight(t.hemiSky, 0.5 / Math.PI);
+  const rim = new DirectionalLight(t.hemiSky, 0.5);
   rim.position.set(-6, 4, -4);
   envGroup.add(rim);
 
@@ -626,7 +626,7 @@ function applyReflections(): void {
   const on = !!look?.reflections;
   applyEnv(litMats);
   // with image-based lighting the hemisphere fill is partly redundant
-  if (hemi) hemi.intensity = (on && envTex ? 0.45 : 0.85) / Math.PI;
+  if (hemi) hemi.intensity = on && envTex ? 0.45 : 0.85;
 }
 const assetsKey = (l: Look | null): string => (l ? [l.detailed, l.budget.material, l.budget.orbSeg, l.budget.floorTex, l.budget.panels, l.budget.mobiles].join("|") : "");
 /** The runtime's quality tier applied live (render.js setGraphics). */
@@ -641,8 +641,8 @@ export function applyLook(next: Look): void {
     blendIntensity: 0.75, radius: 0.35, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8 },
   };
-  // UnrealBloomPass(0.5, 0.4, 0.88): only emissive strips, the selection glow and specular highlights bloom
-  renderer.bloom = next.bloom ? { strength: 0.5, radius: 0.4, threshold: 0.88, resolution: next.budget.bloomRes } : null;
+  // UnrealBloomPass(0.5, 0.4, 0.88) on r160: strength squared for r185's bloom; only emissive strips, the selection glow and specular highlights bloom
+  renderer.bloom = next.bloom ? { strength: 0.25, radius: 0.4, threshold: 0.88, resolution: next.budget.bloomRes } : null;
   renderer.post = next.grade ? GRADE : null;
   renderer.grade = null;
   renderer.antialias = next.antialias;
@@ -719,7 +719,14 @@ function frameCamera(snap: boolean): void {
   }
   springs.dist.set(dist); springs.yaw.set(p.yaw); springs.height.set(p.height);
   if (snap) { springs.dist.snap(dist); springs.yaw.snap(p.yaw); springs.height.snap(p.height); }
-  if (keyLight) keyLight.shadow.distance = dist + 10;
+  if (keyLight) {
+    // render.js _applyShadows: the frustum fitted around the sculpture row
+    const r = Math.max(2.8, ((n - 1) / 2) * TUBE_SPACING + 0.6 + 0.8);
+    const cam = keyLight.shadow.camera as OrthographicCamera;
+    cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
+    cam.near = 4; cam.far = 18;
+    cam.updateProjectionMatrix();
+  }
 }
 function updateCamera(dt: number): void {
   const dist = springs.dist.update(dt), yaw = springs.yaw.update(dt), hMul = springs.height.update(dt);
