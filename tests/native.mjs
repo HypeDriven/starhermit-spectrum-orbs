@@ -6,7 +6,7 @@
 // the files, i.e. that `npm run package` ran after the last change. Today's
 // Daily is solved here and played as tests/native/.daily.play (written at
 // test time: the board follows the UTC day). STARHERMIT
-// names the runtime (default: the published 1.28.0 Linux runtime under
+// names the runtime (default: the published 1.29.0 Linux runtime under
 // ~/sh/runtime); TSC the TypeScript compiler (default ~/sh/runtime/ts).
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -18,7 +18,7 @@ import { writeFileSync } from 'node:fs';
 import { dailyScript } from '../tools/gen-plays.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const fallback = join(homedir(), 'sh/runtime/1.28.0/starhermit-1.28.0-linux-x86_64/starhermit');
+const fallback = join(homedir(), 'sh/runtime/1.29.0/starhermit-1.29.0-linux-x86_64/starhermit');
 const exe = process.env.STARHERMIT || (existsSync(fallback) ? fallback : null);
 const tsc = process.env.TSC || join(homedir(), 'sh/runtime/ts/node_modules/.bin/tsc');
 let failed = 0;
