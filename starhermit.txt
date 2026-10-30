@@ -15,8 +15,8 @@ cover=cover.jpg
 launch=index.html
 engine.api=1
 engine.entry=native/main.ts
-engine.version=1.29.0
-engine.minor=31
+engine.version=1.30.0
+engine.minor=32
 engine.capabilities=platform,storage,clipboard
 
 # Keyboard actions (players rebind keys and pads in the runtime's Options).
