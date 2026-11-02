@@ -15,7 +15,7 @@ cover=cover.jpg
 launch=index.html
 engine.api=1
 engine.entry=native/main.ts
-engine.version=1.30.0
+engine.version=1.33.1
 engine.minor=32
 engine.capabilities=platform,storage,clipboard
 
