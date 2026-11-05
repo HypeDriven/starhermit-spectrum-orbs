@@ -34,14 +34,13 @@ import {
 // ------------------------------------------------------------------ layout
 interface Layout { lw: number; lh: number; sc: number; ts: number; phone: boolean; land: boolean; compact: boolean; narrow: boolean; ox: number; oy: number }
 function layoutNow(): Layout {
-  const f = frame();
+  const v = ui.viewport!();
   const p = ui.preferences();
-  const sc = p.scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const sc = v.scale;
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const land = lw > lh && lh <= 500;
   const phone = !land && lw <= 700 && lh >= lw;
-  return { lw, lh, sc, ts: p.textScale, phone, land, compact: lw < 1024, narrow: lw <= 700, ox: sa.left, oy: sa.top };
+  return { lw, lh, sc, ts: p.textScale, phone, land, compact: lw < 1024, narrow: lw <= 700, ox: v.x, oy: v.y };
 }
 interface Box { x: number; y: number; w: number; h: number }
 const toWindow = (L: Layout, b: Box): ui.Rect => ({ x: L.ox + b.x * L.sc, y: L.oy + b.y * L.sc, width: b.w * L.sc, height: b.h * L.sc });
@@ -87,18 +86,8 @@ function button(b: Btn): void {
 }
 /** Buttons at their own widths in rows that wrap at `width` (.row.wrap). */
 function flow(label: string, list: Btn[], width: number, gap = 12, justify: "start" | "center" = "start"): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
   const bw = (b: Btn): number => Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "menu-btn"));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => { for (const b of row) button({ ...b, width: bw(b) }); }, { spacing: gap, width, justify, align: "center" }));
-  }, { spacing: gap, width });
+  ui.row(label, () => { for (const b of list) button({ ...b, width: bw(b) }); }, { wrap: true, width, gap, justify, align: "center" });
 }
 /** Words wrapped to `maxPx` window pixels (draw.text's own wrap breaks inside words). */
 function wrapLines(text: string, maxPx: number, size: number): string[] {
@@ -821,7 +810,7 @@ function resultsPanel(w: number): void {
   v.newAchievements.forEach((a, i) => para(`🏆 ${T("Achievement unlocked: {name}", { name: T(a.name) })}`, w, "ok-text", `results-ach-${i}`));
   para(v.board(), w, "note", "results-board-status");
   const lb = v.lb;
-  if (lb) para(lb === "posting" ? S("lbPosting") : !lb.posted ? S("lbNotPosted") : lb.rank ? S("lbRank", { rank: lb.rank }) : S("lbPosted"), w, "note", "results-lb");
+  if (lb) para(lb === "posting" ? S("leaderboardPosting") : !lb.posted ? S("leaderboardNotPosted") : lb.rank ? S("leaderboardRank", { rank: lb.rank }) : S("leaderboardPosted"), w, "note", "results-lb");
 }
 function fieldset(id: string, legend: string, w: number, build: (iw: number) => void): void {
   ui.column(id, () => { para(legend, w - 30, "legend", `${id}-legend`); build(w - 30); }, { style: "fieldset", width: w, spacing: 6 });

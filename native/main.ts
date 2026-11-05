@@ -20,7 +20,7 @@
 // run on a clock advanced 1/60 s per fixed step (the browser build used
 // Date.now, setTimeout and setInterval), so slow frames never change a round
 // and play scripts replay exactly.
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { afterRender, clipboard, createTimers, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { onAction, onPointerButton, onPointerMove, onTouch, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
@@ -88,13 +88,18 @@ export const game = {
 let clockMs = 0;
 export const now = (): number => clockMs;
 export const fresh = (): boolean => frame().frame !== app.openedFrame;
-const timers: { at: number; fn: () => void; tag?: string }[] = [];
+const timers = createTimers();
+const tagged = new Map<string, number>();
 /** setTimeout on the fixed-step clock (a tag replaces the pending timer of that tag). */
 function after(ms: number, fn: () => void, tag?: string): void {
-  if (tag) for (let i = timers.length - 1; i >= 0; i--) if (timers[i]!.tag === tag) timers.splice(i, 1);
-  timers.push({ at: clockMs + ms, fn, ...(tag ? { tag } : {}) });
+  if (!tag) { timers.after(ms / 1000, fn); return; }
+  cancel(tag);
+  tagged.set(tag, timers.after(ms / 1000, () => { tagged.delete(tag); fn(); }));
 }
-function cancel(tag: string): void { for (let i = timers.length - 1; i >= 0; i--) if (timers[i]!.tag === tag) timers.splice(i, 1); }
+function cancel(tag: string): void {
+  const id = tagged.get(tag);
+  if (id !== undefined) { timers.cancel(id); tagged.delete(tag); }
+}
 
 // ------------------------------------------------------------------ helpers
 const spoken: string[] = [];
@@ -116,9 +121,8 @@ function haptic(ms: number): void {
   if (!settings().haptics) return;
   try { vibrate(ms); } catch { /* none */ }
 }
-const pending: (() => void)[] = [];
-/** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
-export function later(fn: () => void): void { pending.push(fn); }
+/** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets); before this frame's draw. */
+export function later(fn: () => void): void { afterRender(fn); }
 export const settings = (): Settings => platform.settings();
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void {
   settings()[key] = value;
@@ -322,7 +326,7 @@ export function closeToTitle(): void {
   if (game.session && game.session.state.status === "active") persistRound();
   game.session = null;
   game.tutorialIndex = -1;
-  for (const t of [...timers]) if (t.tag?.startsWith("countdown") || t.tag === "results" || t.tag === "settle" || t.tag === "lesson") cancel(t.tag);
+  for (const t of [...tagged.keys()]) if (t.startsWith("countdown") || t === "results" || t === "settle" || t === "lesson") cancel(t);
   audio.stopAmbience();
   render.clearSparks();
   refreshResume();
@@ -732,7 +736,7 @@ export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function copyInvite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(S("copied")); } catch { toast(`${S("copyFailed")}: ${link}`, true); }
+  try { clipboard.writeText(link); toast(S("inviteCopied")); } catch { toast(`${S("inviteFailed")}: ${link}`, true); }
 }
 
 // ------------------------------------------------------------------ settings (main.js applySettings)
@@ -756,10 +760,7 @@ onFixedUpdate(() => {
   clockMs += 1000 / 60;
   step++;
   render.tick(1 / 60);
-  for (let i = 0; i < timers.length; i++) {
-    const t = timers[i]!;
-    if (clockMs >= t.at) { timers.splice(i--, 1); t.fn(); }
-  }
+  timers.advance(1 / 60);
   const s = game.session;
   if (s && app.base === "game") {
     // the HUD's 250 ms tick: timed boards check their clock
@@ -774,11 +775,10 @@ onFixedUpdate(() => {
 // ------------------------------------------------------------------ boot and lifecycle
 let lookKey = "";
 function applyLook(): void {
-  const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  const level = frame().level;
+  if (level === lookKey) return;
+  lookKey = level;
+  render.applyLook(lookFor(levelSettings(level)));
 }
 onStart(() => {
   setFixedRate(60);
@@ -826,7 +826,9 @@ onRender(() => {
   const f = frame();
   render.update(frameDt, f.width, f.height, view, ui.preferences().scale);
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
-  pointerInput(wasPlaying);
-  flushAnnouncements();
+  // queued after this frame's presses (later), in the old order
+  afterRender(() => {
+    pointerInput(wasPlaying);
+    flushAnnouncements();
+  });
 });

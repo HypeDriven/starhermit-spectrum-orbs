@@ -2,15 +2,13 @@
 // tests and server.js: the seeded streams (js/rng.js), the rules
 // (js/rules.js), the content (js/content.js: palettes, themes, the 40 Journey
 // stages, the Daily, challenges, practice, lessons, achievements), the
-// session (js/session.js: command log, undo, replay envelope, snapshots), the
-// string tables (js/strings.js, js/sh-strings.js) with their lookup
-// (js/lang.js) and the save model (js/progress.js), evaluated as classic
+// session (js/session.js: command log, undo, replay envelope, snapshots) and the save model (js/progress.js), evaluated as classic
 // scripts so their globals are this module's exports.
 import { loadClassic } from "starhermit:script";
 
 for (const f of [
   "js/rng.js", "js/rules.js", "js/content.js", "js/session.js",
-  "js/strings.js", "js/lang.js", "js/sh-strings.js", "js/progress.js",
+  "js/progress.js",
 ]) loadClassic(f);
 
 // -- The shapes this client reads -------------------------------------------------
@@ -88,7 +86,6 @@ interface SessionApi {
 }
 export interface RandomStream { float(): number; int(a: number, b: number): number }
 interface RngApi { streams(seed: number): { rules: RandomStream; decor: RandomStream; audio: RandomStream }; hashString(s: string): number }
-interface I18nApi { LOCALES: string[]; T(key: string, vars?: Record<string, string | number> | null): string; setLocale(tag: string): void; getLang(): string }
 interface ProgressApi {
   defaultProgression(): Progression; mergeProgression(a: unknown, b: unknown): Progression; defaultSettings(): Settings;
   legacyPreferences(kv: Record<string, unknown>): Partial<Settings>; isBrowserKey(key: string): boolean;
@@ -98,12 +95,10 @@ interface ProgressApi {
 
 const g = globalThis as unknown as {
   SpectrumRules: RulesApi; SpectrumContent: ContentApi; SpectrumSession: SessionApi; SpectrumRng: RngApi;
-  SOI18N: I18nApi; SO_SH_STRINGS: Record<string, Record<string, string>>; SOProgress: ProgressApi;
+  SOProgress: ProgressApi;
 };
 export const Rules = g.SpectrumRules;
 export const Content = g.SpectrumContent;
 export const Session = g.SpectrumSession;
 export const Rng = g.SpectrumRng;
-export const I18n = g.SOI18N;
-export const ShStrings = g.SO_SH_STRINGS;
 export const Progress = g.SOProgress;

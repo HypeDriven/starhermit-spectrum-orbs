@@ -1,0 +1,17 @@
+# Graphics-level bench: a Standard practice board through the menus, one pour, 600 frames measured.
+until 600 Daily Challenge
+frames 30
+click =All Modes
+until 300 Choose a mode
+frames 10
+click =Practice
+until 300 Practice — unranked
+frames 10
+click =Begin
+frames 240
+measure start
+click =Tube 5
+frames 6
+click =Tube 6
+frames 590
+measure stop

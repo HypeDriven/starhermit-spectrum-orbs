@@ -7,18 +7,17 @@
 // 600 ms a sparse pentatonic pluck — a 1.2 s sine at gain 0.05 — whose
 // density follows the board's progress, and every 16th step a 2.4 s triangle
 // at the base; pitch variants ±6 % and the plucks' choices from the level's
-// seeded audio stream). The ambience is rendered once per theme into a
-// 30-second loop (every tone and swell completes whole cycles in it, so it
-// loops without a seam; a slice a frame) and looped on the music bus — the
+// seeded audio stream). The ambience renders once per theme into a 30-second
+// loop (OfflineAudioContext; every tone and swell completes whole cycles in it,
+// so it loops without a seam) and loops on the music bus — the
 // runtime has no ambience bus — at the old ambience-to-music ratio
 // (0.5 / 0.6); the plucks and the drone are rendered per theme into clips and
 // played on fixed steps from main.ts (music bus). The synthesized transients
-// audio.js played while a sample decoded are not ported (a live synthesis
-// graph makes clip loads fail on the web runtime): a clip still loading is
-// silent. The runtime's Options own the volumes and the mute. Clips load once
-// the mixer runs (natively at once, in a browser after the first press), one
-// at a time.
-import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
+// audio.js played while a sample decoded are not ported: a clip still loading
+// is silent. The runtime's Options own the volumes and the mute. Clips load at
+// once in onStart; only starting the loop waits for the mixer (in a browser,
+// the first press).
+import { context, createClip, loadClip, OfflineAudioContext, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 import type { RandomStream } from "./classic.ts";
 
 /** audio.js EVENT_SAMPLES (the events main.js plays). */
@@ -28,13 +27,14 @@ const SAMPLES = {
 } as const;
 export type Sfx = keyof typeof SAMPLES;
 const clips = new Map<string, AudioClip>();
-const queue: string[] = [];
-let loading = false;
-let wantClips = false;
 let suspended = false;
 
-/** Asks for the clips; they load once the mixer runs (see update). */
-export function loadSfx(): void { wantClips = true; }
+/** Loads every clip at once (onStart). */
+export function loadSfx(): void {
+  for (const name of new Set(Object.values(SAMPLES))) {
+    loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => { console.warn(`sfx ${name}: ${e instanceof Error ? e.message : String(e)}`); });
+  }
+}
 
 export function play(ev: Sfx): void {
   if (suspended) return;
@@ -42,15 +42,11 @@ export function play(ev: Sfx): void {
   const clip = clips.get(name);
   if (!clip) return;
   const bus: Bus = ev === "hint" ? "interface" : "effects";
-  try { playClip(clip, { bus }); } catch { clips.delete(name); if (!queue.includes(name)) queue.push(name); }
+  try { playClip(clip, { bus }); } catch { /* the mixer is full this frame: skip it */ }
 }
 
 // -- the ambience and the music ----------------------------------------------------------------
 const RATE = 11025;
-const SINE = new Float32Array(4096);
-for (let i = 0; i < SINE.length; i++) SINE[i] = Math.sin((2 * Math.PI * i) / SINE.length);
-const sine = (ph: number): number => SINE[Math.floor((ph - Math.floor(ph)) * 4096) & 4095]!;
-const tri = (ph: number): number => { const p = ph - Math.floor(ph); return p < 0.25 ? 4 * p : p < 0.75 ? 2 - 4 * p : 4 * p - 4; };
 /** audio.js startAmbience: the theme's base frequency. */
 const BASE: Record<string, number> = { atrium: 196, verdant: 174, midnight: 146, ember: 130, porcelain: 220 };
 const SCALE = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2];
@@ -62,7 +58,7 @@ const cents = (c: number): number => Math.pow(2, c / 1200);
 interface Pad { freq: number; lfo: number; gain: number }
 interface ThemeAudio {
   key: string;
-  pad: Float32Array; padPos: number; padClip: AudioClip | null;
+  padClip: AudioClip | null;
   notes: (AudioClip | null)[]; drone: AudioClip | null;
 }
 const themes = new Map<string, ThemeAudio>();
@@ -78,31 +74,44 @@ function padsFor(base: number): Pad[] {
     { freq: whole(base * 2.02 * cents(-4)), lfo: whole(0.066), gain: 0.015 },
   ];
 }
-/** One slice of the pad loop; true when done. */
-function renderPad(t: ThemeAudio, count: number): boolean {
-  const pads = padsFor(BASE[t.key] ?? 196);
-  const end = Math.min(t.pad.length, t.padPos + count);
-  for (let i = t.padPos; i < end; i++) {
-    const s = i / RATE;
-    let v = 0;
-    for (const p of pads) v += sine(p.freq * s) * (p.gain + p.gain * 0.5 * sine(p.lfo * s));
-    t.pad[i] = v;
+/** The pad loop: sines swelling ±50 % with their LFOs. */
+async function renderPad(base: number): Promise<AudioClip> {
+  const off = new OfflineAudioContext(1, RATE * LOOP_S, RATE);
+  for (const p of padsFor(base)) {
+    const osc = off.createOscillator(); osc.frequency.value = p.freq;
+    const g = off.createGain(); g.gain.value = p.gain;
+    const lfo = off.createOscillator(); lfo.frequency.value = p.lfo;
+    const depth = off.createGain(); depth.gain.value = p.gain * 0.5;
+    lfo.connect(depth).connect(g.gain); lfo.start();
+    osc.connect(g).connect(off.destination); osc.start();
   }
-  t.padPos = end;
-  return end >= t.pad.length;
+  return createClip(await off.startRendering());
 }
 /** audio.js _blip: 8 ms linear attack to `gain`, exponential fall to 0.0001 over `dur` (+50 ms tail). */
-function blip(freq: number, dur: number, wave: "sine" | "triangle", gain: number): Float32Array {
-  const n = Math.round(RATE * (dur + 0.05));
-  const out = new Float32Array(n);
-  const k = Math.log(0.0001 / gain);
-  for (let i = 0; i < n; i++) {
-    const s = i / RATE;
-    const env = s < 0.008 ? (s / 0.008) * gain : s < dur ? gain * Math.exp((k * (s - 0.008)) / (dur - 0.008)) : 0;
-    const ph = freq * s;
-    out[i] = (wave === "sine" ? sine(ph) : tri(ph)) * env;
-  }
-  return out;
+async function renderBlip(freq: number, dur: number, wave: "sine" | "triangle", gain: number): Promise<AudioClip> {
+  const off = new OfflineAudioContext(1, Math.round(RATE * (dur + 0.05)), RATE);
+  const osc = off.createOscillator(); osc.type = wave; osc.frequency.value = freq;
+  const g = off.createGain();
+  g.gain.setValueAtTime(0, 0);
+  g.gain.linearRampToValueAtTime(gain, 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, dur);
+  osc.connect(g).connect(off.destination);
+  osc.start(); osc.stop(dur);
+  return createClip(await off.startRendering());
+}
+/** Renders a theme's loop and notes once. */
+function themeAudio(key: string): ThemeAudio {
+  let t = themes.get(key);
+  if (t) return t;
+  const made: ThemeAudio = { key, padClip: null, notes: SCALE.map(() => null), drone: null };
+  themes.set(key, made);
+  const warn = (e: unknown): void => { console.warn(`audio: ${String(e)}`); };
+  const base = BASE[key] ?? 196;
+  renderPad(base).then((c) => { made.padClip = c; }, warn);
+  SCALE.forEach((s, i) => { renderBlip(base * 2 * s, 1.2, "sine", 0.05).then((c) => { made.notes[i] = c; }, warn); });
+  renderBlip(base, 2.4, "triangle", 0.05).then((c) => { made.drone = c; }, warn);
+  t = made;
+  return t;
 }
 
 /** The level's theme: its ambience loops while a round is on (audio.js startAmbience / stopAmbience). */
@@ -139,45 +148,11 @@ export function musicStep(rng: RandomStream, variant: RandomStream): void {
   }
 }
 
-/** Each frame: the clips once the mixer runs (one at a time), then the theme's loop and notes. */
+/** Each frame, once the mixer runs: the theme's loop. */
 export function update(): void {
-  if (context.state !== "running") return;
-  if (wantClips) {
-    wantClips = false;
-    for (const n of Object.values(SAMPLES)) if (!queue.includes(n)) queue.push(n);
-  }
-  if (!loading && queue.length) {
-    const name = queue.shift()!;
-    if (!clips.has(name)) {
-      loading = true;
-      loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => {
-        console.warn(`sfx ${name}: ${e instanceof Error ? e.message : String(e)}`);
-        loading = false;
-      });
-    }
-    return;
-  }
-  if (loading || !want) return;
-  let t = themes.get(want);
-  if (!t) {
-    t = { key: want, pad: new Float32Array(RATE * LOOP_S), padPos: 0, padClip: null, notes: SCALE.map(() => null), drone: null };
-    themes.set(want, t);
-  }
-  if (!t.padClip) {
-    if (!renderPad(t, 12000)) return;
-    try { t.padClip = createClip([t.pad], RATE); } catch (e) { console.warn(`audio: ${String(e)}`); want = null; }
-    return;
-  }
-  if (padTheme !== want) {
-    if (padVoice) { try { padVoice.stop(); } catch { /* gone */ } }
-    try { padVoice = playClip(t.padClip, { bus: "music", gain: suspended ? 0 : PAD_GAIN, loop: true }); padTheme = want; } catch { padVoice = null; }
-    return;
-  }
-  const base = BASE[t.key] ?? 196;
-  const missing = t.notes.findIndex((c) => !c);
-  if (missing >= 0) {
-    try { t.notes[missing] = createClip([blip(base * 2 * SCALE[missing]!, 1.2, "sine", 0.05)], RATE); } catch { /* retry next frame */ }
-    return;
-  }
-  if (!t.drone) { try { t.drone = createClip([blip(base, 2.4, "triangle", 0.05)], RATE); } catch { /* retry */ } }
+  if (context.state !== "running" || !want) return;
+  const t = themeAudio(want);
+  if (!t.padClip || padTheme === want) return;
+  if (padVoice) { try { padVoice.stop(); } catch { /* gone */ } }
+  try { padVoice = playClip(t.padClip, { bus: "music", gain: suspended ? 0 : PAD_GAIN, loop: true }); padTheme = want; } catch { padVoice = null; }
 }

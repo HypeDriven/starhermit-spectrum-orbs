@@ -27,6 +27,6 @@ npm start                # local dev server (server.js)
   the 3D gallery (`render.ts`), sound, save/platform, quality tiers, styles, i18n
 - `js/rng.js`, `rules.js`, `content.js`, `session.js` — the pure rules, content and
   session, shared with `server.js` and the tests
-- `js/progress.js` — save model and migrations; `js/strings.js`, `lang.js`,
-  `sh-strings.js` — the nine locales
+- `js/progress.js` — save model and migrations; `assets/strings.json` — the
+  nine locales
 - `score-script.js` — the platform script that range-checks posted scores

@@ -1,13 +1,12 @@
 // Spectrum Orbs — localization coverage: every English key the native client
 // (native/*.ts) and the content show to players is translated in every locale
 // (en-GB → en-US, es-ES → es-419, fr-CA → fr-FR inherit), placeholders
-// survive, no table row is unused, js/lang.js falls back by locale, and the
-// account strings (js/sh-strings.js) cover the nine locales.
+// survive and no table row is unused. The account strings are the engine's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { loadTables, codeKeys, audit, LOCALES } from './i18n-common.mjs';
+import { codeKeys, audit } from './i18n-common.mjs';
 
 const ROOT = new URL('../', import.meta.url);
 const read = (p) => readFileSync(new URL(p, ROOT), 'utf8');
@@ -37,29 +36,6 @@ export function usedKeys() {
 }
 
 test('every used key is translated in every locale; placeholders intact; no unused rows', () => {
-  assert.deepEqual(audit(loadTables(ROOT, 'js/strings.js', 'SO_STRINGS'), usedKeys()), []);
-});
-
-test('js/lang.js: locale fallbacks and placeholders', () => {
-  const sandbox = {}; sandbox.globalThis = sandbox;
-  const vm = require('node:vm');
-  vm.runInNewContext(read('js/strings.js'), sandbox);
-  vm.runInNewContext(read('js/lang.js'), sandbox);
-  const I = sandbox.SOI18N;
-  I.setLocale('de-DE');
-  assert.equal(I.T('Undo & hints'), 'Rückgängig & Tipps');
-  I.setLocale('fr-CA');
-  assert.equal(I.T('Score'), 'Pointage');
-  assert.equal(I.T('Tube {n}', { n: 3 }), 'Tube 3');
-  I.setLocale('it-IT');
-  assert.equal(I.T('Daily — {date}', { date: '2026-10-17' }), 'Sfida del giorno — 2026-10-17');
-  I.setLocale('en-GB');
-  assert.equal(I.T('Color palette'), 'Colour palette');
-  I.setLocale('xx');
-  assert.equal(I.getLang(), 'en-US');
-});
-
-test('account strings cover all nine locales', () => {
-  const S = require('../js/sh-strings.js');
-  for (const l of LOCALES) for (const k of ['signIn', 'invite', 'copied', 'copyFailed', 'signedOut', 'lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(S[l] && S[l][k], `${l} ${k}`);
+  const { 'en-US': _identity, ...tables } = JSON.parse(read('assets/strings.json'));
+  assert.deepEqual(audit(tables, usedKeys()), []);
 });

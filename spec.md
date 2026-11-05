@@ -103,7 +103,7 @@ Every tube is a button twice over: its number label ("Tube 3") and its chip ("Tu
 
 ### Localization
 
-Nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT) for every string the client shows: `js/strings.js` (rows keyed by the English text; en-GB, es-ES and fr-CA list differences) through `js/lang.js`, the account strings in `js/sh-strings.js`. The locale is the runtime's interface language (Options › Language, else the account's or the device's); a change shows on the next frame without restarting a round.
+Nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT) for every string the client shows: `assets/strings.json` (keyed by the English text; en-GB, es-ES and fr-CA list differences) on the engine's `strings`, the account strings the engine's `starhermit.*`. The locale is the runtime's interface language (Options › Language, else the account's or the device's); a change shows on the next frame without restarting a round.
 
 ## 4. Visual and audio design
 
@@ -115,12 +115,12 @@ The three.js r160 scene ported to `starhermit:scene`: the theme's sky and fog (1
 
 | Tier | Shading | Shadows | AO | Bloom / grade | AA | Reflections | Gallery detail | Particles |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Low | Lambert, 16-seg orbs | off | off | off | MSAA | off | plain (5 panels) | off |
-| Balanced | standard, 24 seg | 512 | off | on | FXAA | on | detailed: 9 panels, light strips, terrazzo 256, pool, 2 mobiles, motes | low (30 %) |
-| High | physical (clearcoat, glass IOR), 32 seg | 1024 | on | on | SMAA | on | 11 panels, 3 mobiles | high |
-| Ultra | physical, 48 seg | 2048 | high | on (full res) | MSAA | on | 13 panels, terrazzo 512, 5 mobiles | high |
+| Low | Lambert, 16-seg orbs | level | level | off | level | off | plain (5 panels) | off |
+| Balanced | standard, 24 seg | level | level | level | level | on | detailed: 9 panels, light strips, terrazzo 256, pool, 2 mobiles, motes | low (30 %) |
+| High | physical (clearcoat, glass IOR), 32 seg | level | level | level | level | on | 11 panels, 3 mobiles | high |
+| Ultra | physical, 48 seg | level | level | level | level | on | 13 panels, terrazzo 512, 5 mobiles | high |
 
-Spark and mote counts scale within a tier by the runtime's level index (at most 2×). Reflections are `new RoomEnvironment(renderer)` filtered by PMREM (σ 0.04) as each lit material's envMap at its old envMapIntensity (glass 0.35, rims 0.6, pedestals 0.4, orbs 0.55, floor 0.12). Post effects are the runtime's: GTAO (radius 0.35, glass and markers excluded), bloom (0.5 / 0.4 / threshold 0.88), the old colour grade (S-curve 0.22, saturation 1.1, cool shadows / warm highlights, vignette 0.26) as a WGSL `renderer.post`, ACES at exposure 1.05. The terrazzo floor is the old procedural speckle baked offline (tools/bake-textures.mjs → assets/terrazzo-*.png). Auto, render scale, adaptive resolution and the frame-rate limit are the runtime's.
+"level" is `levelSettings()` (shadow size, AO, bloom resolution, grade, anti-aliasing). Spark and mote counts scale within a tier by the level's particle budget (at most 2×); both are native particle emitters. Reflections are `new RoomEnvironment(renderer)` filtered by PMREM (σ 0.04) as each lit material's envMap at its old envMapIntensity (glass 0.35, rims 0.6, pedestals 0.4, orbs 0.55, floor 0.12). Post effects are the runtime's: GTAO (radius 0.35, glass and markers excluded), bloom (0.5 / 0.4 / threshold 0.88), the old colour grade (S-curve 0.22, saturation 1.1, cool shadows / warm highlights, vignette 0.26) as a WGSL `renderer.post`, ACES at exposure 1.05. The terrazzo floor is the old procedural speckle baked offline (tools/bake-textures.mjs → assets/terrazzo-*.png). Auto, render scale, adaptive resolution and the frame-rate limit are the runtime's.
 
 ### Sound (audio.ts)
 
@@ -129,7 +129,7 @@ The authored one-shots (sfx/*.opus): focus, pick, drop, invalid, tube complete, 
 ## 5. Technical architecture
 
 - `js/rng.js`, `js/rules.js`, `js/content.js`, `js/session.js` — the browser build's pure rules, content, session (command log, undo, replay envelope, snapshot) — unchanged, shared with server.js and the Node tests, loaded with `loadClassic` (native/classic.ts).
-- `js/progress.js` — the save model and migrations; `js/strings.js`, `js/lang.js`, `js/sh-strings.js` — strings.
+- `js/progress.js` — the save model and migrations; `assets/strings.json` — strings.
 - `native/main.ts` — the state machine, modes, input, timers, results; `screens.ts` — every screen on `starhermit:ui`; `render.ts` — the gallery; `audio.ts`; `platform.ts` — save, platform, boards; `quality.ts`; `style.ts` (assets/ui-style.json from tools/ui-style.css via `npm run css`); `i18n.ts`.
 - **Determinism:** the runtime runs 60 fixed steps a second; the session's clock (`GameSession`'s `now`), the countdown, the 0.42 s pour resolution that locks input, the gameplay tweens, the timed boards' 250 ms clock check, the music beat and every timer advance on them. Slow frames never change a round; play scripts replay exactly.
 - `index.html` and `starhermit-files.json` are the engine's web loader and file index (`npm run package`); `.starhermitignore` leaves tests, tools, server.js and docs out of the package.

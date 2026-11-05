@@ -33,15 +33,15 @@
 // advance on the runtime's fixed steps (tick), so a move lands on the same
 // step main.ts settles it; ambient motion follows the frame time (update).
 import {
-  ACESFilmicToneMapping, AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color,
+  ACESFilmicToneMapping, AdditiveBlending, ParticleEmitter, BackSide, BoxGeometry, CanvasTexture, CircleGeometry, Color,
   CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4, Mesh,
-  OrthographicCamera,   MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, Points,
+  OrthographicCamera,   MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, 
   PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, TextureLoader,
   TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
 import { OffscreenCanvas } from "starhermit:canvas";
 import type { Color as OrbColor, RandomStream, RuleEvent, State, Theme } from "./classic.ts";
-import { MOTE_MAX, SPARK_MAX, sparkCap, type Look } from "./quality.ts";
+import { MOTE_MAX, sparkCap, type Look } from "./quality.ts";
 
 export interface Rect { x: number; y: number; width: number; height: number }
 
@@ -314,7 +314,7 @@ function buildEnvironment(): void {
       envGroup.add(mobile);
     }
   }
-  motes.material.color.set(t.keyLight);
+  moteMat.color.set(t.keyLight);
   applyShadows();
   applyReflections();
 }
@@ -520,20 +520,19 @@ export function animateMove(evt: RuleEvent): void {
 }
 
 // ---------- sparks and motes ----------
-interface Spark { alive: boolean; i: number; pos: Vector3; vel: Vector3; life: number; maxLife: number; color: Color }
-const pPos = new Float32Array(SPARK_MAX * 3), pCol = new Float32Array(SPARK_MAX * 3);
-const sparkGeo = new BufferGeometry();
-sparkGeo.setAttribute("position", new BufferAttribute(pPos, 3));
-sparkGeo.setAttribute("color", new BufferAttribute(pCol, 3));
-const sparks = new Points(sparkGeo, new PointsMaterial({
-  size: 0.07, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, map: radialTexture(), blending: AdditiveBlending,
-}));
-sparks.frustumCulled = false;
-fxGroup.add(sparks);
-const pool: Spark[] = [];
-for (let i = 0; i < SPARK_MAX; i++) {
-  pool.push({ alive: false, i, pos: new Vector3(), vel: new Vector3(), life: 0, maxLife: 1, color: new Color() });
-  pPos[i * 3 + 1] = -100;
+// One emitter per colour (a colour applies to live particles too), made when a burst first needs it.
+const sparkMat = new PointsMaterial({ size: 0.07, transparent: true, opacity: 0.95, depthWrite: false, map: radialTexture(), blending: AdditiveBlending });
+const sparkEmitters = new Map<string, ParticleEmitter>();
+function sparksFor(hex: string): ParticleEmitter {
+  let e = sparkEmitters.get(hex);
+  if (!e) {
+    const bright = new Color(hex).multiplyScalar(1.5);
+    e = new ParticleEmitter({ capacity: 800, material: sparkMat, seed: 0x5eed + sparkEmitters.size, space: "local", gravity: [0, -4.5, 0], colors: [bright, new Color(0, 0, 0)] }); // fades as the old life × 1.5
+    e.frustumCulled = false;
+    fxGroup.add(e);
+    sparkEmitters.set(hex, e);
+  }
+  return e;
 }
 let fxRand = 0x5eed;
 /** The bursts' scatter (render.js used Math.random: cosmetic only; a fixed stream keeps checks repeatable). */
@@ -544,35 +543,17 @@ export function burst(tube: number, hex: string, count: number, big: boolean): v
   const budget = sparkCap(look);
   if (reducedMotion || budget === 0) return;
   const pos = tubeGroups[tube]?.position ?? new Vector3();
-  const alive = pool.filter((p) => p.alive).length;
+  let alive = 0;
+  for (const e of sparkEmitters.values()) alive += e.count;
   const n = Math.min(look.particles === "high" ? count : Math.ceil(count / 2), budget - alive);
-  const color = new Color(hex);
-  for (let k = 0; k < n; k++) {
-    const p = pool.find((q) => !q.alive && q.i < budget);
-    if (!p) break;
-    p.alive = true;
-    p.pos.set(pos.x, tubeH + 0.4, pos.z);
-    const a = rnd() * Math.PI * 2;
-    const sp = (big ? 2.2 : 1.2) * (0.5 + rnd());
-    p.vel.set(Math.cos(a) * sp * 0.5, 1.2 + rnd() * (big ? 2.4 : 1.2), Math.sin(a) * sp * 0.5);
-    p.life = p.maxLife = big ? 1.4 : 0.8;
-    p.color.copy(color);
-  }
-}
-function updateSparks(dt: number): void {
-  let any = false;
-  for (const p of pool) {
-    if (!p.alive) continue;
-    any = true;
-    p.life -= dt;
-    if (p.life <= 0) { p.alive = false; pPos[p.i * 3 + 1] = -100; continue; }
-    p.vel.y -= 4.5 * dt;
-    p.pos.addScaledVector(p.vel, dt);
-    pPos[p.i * 3] = p.pos.x; pPos[p.i * 3 + 1] = p.pos.y; pPos[p.i * 3 + 2] = p.pos.z;
-    const k = (p.life / p.maxLife) * 1.5;
-    pCol[p.i * 3] = p.color.r * k; pCol[p.i * 3 + 1] = p.color.g * k; pCol[p.i * 3 + 2] = p.color.b * k;
-  }
-  if (any) { (sparkGeo.attributes.position as BufferAttribute).needsUpdate = true; (sparkGeo.attributes.color as BufferAttribute).needsUpdate = true; }
+  if (n <= 0) return;
+  const e = sparksFor(hex);
+  e.set({
+    life: big ? 1.4 : 0.8,
+    velocity: [0, big ? 2.4 : 1.8, 0],
+    velocitySpread: big ? [1.2, 1.2, 1.2] : [0.65, 0.6, 0.65],
+  });
+  e.burst(n, [pos.x, tubeH + 0.4, pos.z]);
 }
 /** render.js celebrate: a burst from every tube and a settle shake. */
 export function celebrate(): void {
@@ -584,33 +565,25 @@ export function celebrate(): void {
   if (!reducedMotion) shakeAmp = Math.max(shakeAmp, 0.03);
 }
 export function clearSparks(): void {
-  for (const p of pool) if (p.alive) { p.alive = false; pPos[p.i * 3 + 1] = -100; }
-  (sparkGeo.attributes.position as BufferAttribute).needsUpdate = true;
+  for (const e of sparkEmitters.values()) e.clear();
 }
 
-const motePos = new Float32Array(MOTE_MAX * 3);
-{
-  let seed = 7;
-  const r = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < MOTE_MAX; i++) { motePos[i * 3] = (r() - 0.5) * 9; motePos[i * 3 + 1] = r() * 5; motePos[i * 3 + 2] = (r() - 0.5) * 5 - 0.8; }
-}
-const moteGeo = new BufferGeometry();
-moteGeo.setAttribute("position", new BufferAttribute(motePos, 3));
-const motes = new Points(moteGeo, new PointsMaterial({
-  size: 0.035, map: radialTexture(), color: 0xffe0b8, transparent: true, opacity: 0.35, depthWrite: false, blending: AdditiveBlending,
-}));
+// Rising dust (long lives: the old drift crosses the room in about a minute).
+const moteMat = new PointsMaterial({ size: 0.035, map: radialTexture(), color: 0xffe0b8, transparent: true, opacity: 0.35, depthWrite: false, blending: AdditiveBlending });
+const motes = new ParticleEmitter({ capacity: MOTE_MAX, material: moteMat, seed: 7, space: "local", shape: "box", extent: [4.5, 2.5, 2.5] });
+motes.position.set(0, 2.5, -0.8);
 motes.frustumCulled = false;
 motes.visible = false;
 fxGroup.add(motes);
-function updateMotes(dt: number): void {
-  if (!motes.visible || !look) return;
-  const live = Math.min(MOTE_MAX, look.budget.motes) * 3;
-  for (let i = 0; i < live; i += 3) {
-    motePos[i + 1] = motePos[i + 1]! + dt * (0.05 + (i % 7) * 0.008);
-    motePos[i] = motePos[i]! + Math.sin(elapsed * 0.3 + i) * dt * 0.03;
-    if (motePos[i + 1]! > 5) motePos[i + 1] = 0;
-  }
-  (moteGeo.attributes.position as BufferAttribute).needsUpdate = true;
+function setMotes(): void {
+  const count = look?.animated ? look.budget.motes : 0;
+  motes.visible = count > 0;
+  motes.clear();
+  if (!count) { motes.rate = 0; return; }
+  motes.set(reducedMotion
+    ? { velocity: [0, 0, 0], velocitySpread: 0, life: 3600, rate: 0 }
+    : { velocity: [0, 0.074, 0], velocitySpread: [0.02, 0.024, 0], life: [20, 100], rate: count / 60 });
+  motes.burst(count);
 }
 
 // ---------- shadows, reflections, graphics ----------
@@ -619,7 +592,7 @@ function applyShadows(): void {
   renderer.shadowMap.enabled = size > 0;
   if (keyLight) {
     keyLight.castShadow = size > 0;
-    if (size > 0) keyLight.shadow.mapSize = size;
+    if (size > 0) keyLight.shadow.mapSize = size; // the level's size: the engine keeps whatever the game sets
   }
 }
 function applyReflections(): void {
@@ -636,26 +609,27 @@ export function applyLook(next: Look): void {
   look = next;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  const hi = next.ao === "high";
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.75, radius: 0.35, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: hi ? 16 : 8, resolution: next.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: hi ? 6 : 4, rings: 2, samples: hi ? 16 : 8 },
+  const ao = next.ao, full = !!ao && ao.resolution >= 1; // the engine's AoQuality: below 1 "on", from 1 "high"
+  renderer.ao = ao && {
+    blendIntensity: 0.75, radius: 0.35, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: full ? 6 : 4, rings: 2, samples: ao.denoiseSamples },
   };
   // UnrealBloomPass(0.5, 0.4, 0.88) on r160 (bloom.model "r160", the page's strength); only emissive strips, the selection glow and specular highlights bloom
-  renderer.bloom = next.bloom ? { model: "r160", strength: 0.5, radius: 0.4, threshold: 0.88, resolution: next.budget.bloomRes } : null;
+  renderer.bloom = next.bloom !== null ? { model: "r160", strength: 0.5, radius: 0.4, threshold: 0.88, resolution: next.bloom } : null;
   renderer.post = next.grade ? GRADE : null;
   renderer.grade = null;
   renderer.antialias = next.antialias;
-  motes.visible = next.animated;
-  moteGeo.setDrawRange(0, next.budget.motes);
-  sparkGeo.setDrawRange(0, sparkCap(next));
+  setMotes();
   applyShadows();
   if (theme && assetsKey(next) !== prev) {
     buildEnvironment();
     if (curState) { const sel = selected, h = hint; rebuildBoard(curState); select(sel); if (h) setHint(h); }
   } else applyReflections();
 }
-export function setReducedMotion(v: boolean): void { reducedMotion = v; if (v) skipAnimations(); }
+export function setReducedMotion(v: boolean): void {
+  if (reducedMotion !== v) { reducedMotion = v; setMotes(); }
+  if (v) skipAnimations();
+}
 export function skipAnimations(): void { finishTweens(); if (curState) syncState(curState); shakeAmp = 0; }
 export function setPointer(x: number, y: number): void { pointer.x = x; pointer.y = y; }
 
@@ -819,10 +793,8 @@ export function update(dt: number, w: number, h: number, rect: Rect, scale: numb
   if (look?.animated && !reducedMotion) {
     for (const m of spinners) m.rotation.y += (m.userData.spinSpeed as number) * dt;
     for (const s of shimmer) s.mat.emissiveIntensity = s.base + Math.sin(elapsed * s.speed) * s.amp;
-    updateMotes(dt);
   }
   const pulse = 0.45 + Math.sin(elapsed * 4) * 0.15;
   for (const m of markers) { const mm = m.material as MeshBasicMaterial; if (mm.opacity > 0.05) mm.opacity = Math.min(mm.opacity, pulse + 0.2); }
-  updateSparks(dt);
   updateCamera(dt);
 }
