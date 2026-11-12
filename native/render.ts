@@ -1,3 +1,5 @@
+// localization-runtime:attached
+import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The kinetic sculpture gallery on starhermit:scene, as the browser build's
 // js/render.js drew it with three.js r160: the theme's sky and fog, the
 // terrazzo floor disc and its accent ring, the curved back wall of panels
@@ -160,7 +162,7 @@ function glyphTexture(def: OrbColor): Texture {
   const ctx = c.getContext("2d")!;
   ctx.clearRect(0, 0, 128, 128);
   ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.font = "64px sans-serif";
+  ctx.font = __l10nCanvasFont("64px sans-serif");
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(def.glyph, 64, 68);
   const tex = new CanvasTexture(c);

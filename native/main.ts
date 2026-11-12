@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Spectrum Orbs on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (js/rules.js), content (js/content.js)
@@ -820,7 +821,7 @@ onUpdate((dt) => {
   audio.update();
   app.toasts = app.toasts.filter((x) => x.until > clockMs);
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   const wasPlaying = canPlay();
   frameFlags.widgetPress = false;
   const f = frame();
@@ -831,4 +832,8 @@ onRender(() => {
     pointerInput(wasPlaying);
     flushAnnouncements();
   });
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

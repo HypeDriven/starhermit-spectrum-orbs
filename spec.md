@@ -172,3 +172,11 @@ Success targets for the first public test: median first-play time under 20 secon
 - Guests' progress in the old browser build's localStorage does not carry over; signed-in players' cloud progress does.
 - Signed-in paths (cloud merge, foreign save, score posting, platform board) are covered by unit tests, not live-tested here.
 - The left-handed option in the old build reordered the CSS grid in a way that misplaced the rails; here it swaps the Actions and Objective rails.
+
+<!-- regional-localization:start -->
+
+### Regional interface languages
+
+The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `nl-NL`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `fi-FI`, `da-DE`, `lb-BE`, `eu-FR`, `ca-FR`, `oc-FR`, `ca-IT`, `oc-IT`, `ru-FI`, `ca-ES`, `eu-ES`, `gl-ES`, `ru-EE`, `su-ID`, `km-VN`, `co-FR`, `sl-IT`, `fur-IT`, `bew-ID`.
+
+<!-- regional-localization:end -->

@@ -1,3 +1,5 @@
+// localization-runtime:attached
+import { setLocalizedDefaultFont as __l10nSetFont, setLocalizedStyles as __l10nStyles } from "./l10n/font.ts";
 // The look of the top bar, rails, playfield chrome and screens: the browser
 // build's css/style.css, rewritten class-based in tools/ui-style.css and
 // converted once with `starhermit css` into assets/ui-style.json (`npm run
@@ -23,14 +25,14 @@ const CONTRAST: Tokens = {
 let current: Tokens = { ...BASE };
 export function initStyles(): void {
   const css = files.readJson("assets/ui-style.json") as unknown as ui.CssStyles;
-  ui.setFont({ family: "sans-serif" });
+  __l10nSetFont({ family: "sans-serif" });
   ui.setTheme({
     fontSize: 16, smallSize: 13.1, headingSize: 22.4, padding: 8, spacing: 8, radius: 10,
     text: BASE.ink!, muted: BASE["ink-dim"]!, panel: BASE.panel!, control: BASE["panel-2"]!, hovered: "#2c3550",
     pressed: "#34405e", field: BASE["panel-2"]!, accent: BASE.accent!, focus: BASE.accent!, outline: BASE.line!,
   });
   ui.setTokens(css.tokens);
-  ui.setStyles({
+  __l10nStyles({
     ...css.styles,
     label: { text: { color: "$ink" } },
     paragraph: { text: { color: "$ink" } },
