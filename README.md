@@ -1,5 +1,7 @@
 # Spectrum Orbs
 
+**[▶ Play Spectrum Orbs on StarHermit](https://dashboard.starhermit.com/play/b72d034a-4f4f-4921-8a0b-09c0ed1ebee9)**
+
 A kinetic sculpture gallery ordering puzzle. Move the top orb between tubes
 until every tube holds a single color.
 
