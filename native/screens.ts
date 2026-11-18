@@ -111,19 +111,6 @@ function flow(label: string, list: Btn[], width: number, gap = 12, justify: "sta
   const bw = (b: Btn): number => Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "menu-btn"));
   ui.row(label, () => { for (const b of list) button({ ...b, width: bw(b) }); }, { wrap: true, width, gap, justify, align: "center" });
 }
-/** Words wrapped to `maxPx` window pixels (draw.text's own wrap breaks inside words). */
-function wrapLines(text: string, maxPx: number, size: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (cur && draw.measureText(next, __l10nDrawOptions({ size, font: __l10nFont("sans-serif") })).width > maxPx) { lines.push(cur); cur = w; }
-    else cur = next;
-  }
-  if (cur) lines.push(cur);
-  return lines.length ? lines : [""];
-}
 /** The key a runtime action is bound to (the old <kbd> labels). */
 const GLYPH: Record<string, string> = { "Arrow Up": "↑", "Arrow Down": "↓", "Arrow Left": "←", "Arrow Right": "→", Escape: "Esc" };
 function keyOf(action: string, device: "keyboard" | "gamepad" = "keyboard"): string {
@@ -133,7 +120,7 @@ function keyOf(action: string, device: "keyboard" | "gamepad" = "keyboard"): str
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   const top = topBarH(L);
@@ -146,7 +133,6 @@ export function drawScreens(): void {
   topBar(L, top);
   const ov = topOverlay();
   if (ov) overlay(L, ov);
-  toasts(L);
   if (app.focusNext) {
     const age = f.frame - app.openedFrame;
     if (age >= 1) ui.setFocus(app.focusNext);
@@ -891,33 +877,10 @@ function helpPanel(w: number, L: Layout): void {
 }
 
 // ------------------------------------------------------------------ toasts
-function toasts(L: Layout): void {
-  if (!app.toasts.length) return;
-  const f = frame();
-  // during play, lift the toasts above the board-status chips (ui.js placeToasts)
-  let bottom = L.lh - 16;
-  const strip = lastSize.get("board-status");
-  if (app.base === "game" && strip && !app.overlays.length) bottom = Math.max(16, (strip.y - L.oy) / L.sc - 8);
-  const size = 14.4 * L.sc * L.ts;
-  const lineH = size * 1.3;
-  const maxPx = Math.min(520, L.lw - 32) * L.sc - 36 * L.sc;
-  const pills = app.toasts.map((t) => ({ t, lines: wrapLines(t.text, maxPx, size) }));
-  let y = bottom * L.sc + L.oy;
-  for (let i = pills.length - 1; i >= 0; i--) {
-    const { t, lines } = pills[i]!;
-    const wpx = Math.max(...lines.map((l) => draw.measureText(l, __l10nDrawOptions({ size, font: __l10nFont("sans-serif") })).width)) + 36 * L.sc;
-    const hpx = lines.length * lineH + 20 * L.sc;
-    y -= hpx;
-    const x = (f.width - wpx) / 2;
-    ui.place(`toast-${i}`, { anchor: "top-start", x: (x - L.ox) / L.sc, y: (y - L.oy) / L.sc }, () => {
-      ui.widget("", {
-        role: "none", size: { width: wpx / L.sc, height: hpx / L.sc },
-        draw: (r) => {
-          draw.box(r.x, r.y, r.width, r.height, t.warn ? "toast-warn" : "toast");
-          lines.forEach((ln, k) => draw.text(ln, r.x + r.width / 2, r.y + 10 * L.sc + k * lineH, __l10nDrawOptions({ size, color: t.warn ? token("danger") : token("ink"), align: "center", font: __l10nFont("sans-serif") })));
-        },
-      });
-    });
-    y -= 8 * L.sc;
-  }
+
+export function drawScreens(): void {
+  if (!(topOverlay() === "help")) { drawScreensImmediate(); return; }
+  const actions = ["prev","next","confirm","cancel","pause","undo","hint","restart","camera"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

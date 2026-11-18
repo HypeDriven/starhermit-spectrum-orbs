@@ -1,5 +1,6 @@
 // localization-runtime:attached
-import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
+import {
+  localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The kinetic sculpture gallery on starhermit:scene, as the browser build's
 // js/render.js drew it with three.js r160: the theme's sky and fog, the
 // terrazzo floor disc and its accent ring, the curved back wall of panels
@@ -17,8 +18,7 @@ import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 //
 // Graphics follow the runtime's quality tier (native/quality.ts: gfx.js's
 // presets and budgets): Lambert / standard / physical materials, sphere
-// segments, the floor texture size (baked offline: tools/bake-textures.mjs),
-// panels, mobiles, sparks, motes, shadows, reflections, AO, bloom, the grade.
+// segments, the floor texture size (baked offline: tools/bake-textures.mjs), // panels, mobiles, sparks, motes, shadows, reflections, AO, bloom, the grade.
 //
 // From three.js r160 (physically based lights): colours as written, the
 // light intensities as the page (minor 29 follows r155+ units), its fitted
@@ -35,12 +35,9 @@ import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // advance on the runtime's fixed steps (tick), so a move lands on the same
 // step main.ts settles it; ambient motion follows the frame time (update).
 import {
-  ACESFilmicToneMapping, AdditiveBlending, ParticleEmitter, BackSide, BoxGeometry, CanvasTexture, CircleGeometry, Color,
-  CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4, Mesh,
-  OrthographicCamera,   MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, 
-  PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, TextureLoader,
-  TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
+  ACESFilmicToneMapping, AdditiveBlending, BackSide, BoxGeometry, CanvasTexture, CircleGeometry, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4, Mesh, OrthographicCamera, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, PMREMGenerator, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SphereGeometry, Sprite, SpriteMaterial, SRGBColorSpace, TextureLoader, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas } from "starhermit:canvas";
 import type { Color as OrbColor, RandomStream, RuleEvent, State, Theme } from "./classic.ts";
 import { MOTE_MAX, sparkCap, type Look } from "./quality.ts";
@@ -524,12 +521,12 @@ export function animateMove(evt: RuleEvent): void {
 // ---------- sparks and motes ----------
 // One emitter per colour (a colour applies to live particles too), made when a burst first needs it.
 const sparkMat = new PointsMaterial({ size: 0.07, transparent: true, opacity: 0.95, depthWrite: false, map: radialTexture(), blending: AdditiveBlending });
-const sparkEmitters = new Map<string, ParticleEmitter>();
-function sparksFor(hex: string): ParticleEmitter {
+const sparkEmitters = new Map<string, GPUParticleEmitter>();
+function sparksFor(hex: string): GPUParticleEmitter {
   let e = sparkEmitters.get(hex);
   if (!e) {
     const bright = new Color(hex).multiplyScalar(1.5);
-    e = new ParticleEmitter({ capacity: 800, material: sparkMat, seed: 0x5eed + sparkEmitters.size, space: "local", gravity: [0, -4.5, 0], colors: [bright, new Color(0, 0, 0)] }); // fades as the old life × 1.5
+    e = new GPUParticleEmitter({ capacity: 800, material: sparkMat, seed: 0x5eed + sparkEmitters.size, space: "local", gravity: [0, -4.5, 0], colors: [bright, new Color(0, 0, 0)] }); // fades as the old life × 1.5
     e.frustumCulled = false;
     fxGroup.add(e);
     sparkEmitters.set(hex, e);
@@ -572,7 +569,7 @@ export function clearSparks(): void {
 
 // Rising dust (long lives: the old drift crosses the room in about a minute).
 const moteMat = new PointsMaterial({ size: 0.035, map: radialTexture(), color: 0xffe0b8, transparent: true, opacity: 0.35, depthWrite: false, blending: AdditiveBlending });
-const motes = new ParticleEmitter({ capacity: MOTE_MAX, material: moteMat, seed: 7, space: "local", shape: "box", extent: [4.5, 2.5, 2.5] });
+const motes = new GPUParticleEmitter({ capacity: MOTE_MAX, material: moteMat, seed: 7, space: "local", shape: "box", extent: [4.5, 2.5, 2.5] });
 motes.position.set(0, 2.5, -0.8);
 motes.frustumCulled = false;
 motes.visible = false;
@@ -581,7 +578,7 @@ function setMotes(): void {
   const count = look?.animated ? look.budget.motes : 0;
   motes.visible = count > 0;
   motes.clear();
-  if (!count) { motes.rate = 0; return; }
+  if (!count) { motes.set({ rate: 0 }); return; }
   motes.set(reducedMotion
     ? { velocity: [0, 0, 0], velocitySpread: 0, life: 3600, rate: 0 }
     : { velocity: [0, 0.074, 0], velocitySpread: [0.02, 0.024, 0], life: [20, 100], rate: count / 60 });

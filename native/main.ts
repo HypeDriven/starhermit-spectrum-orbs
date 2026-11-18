@@ -112,10 +112,11 @@ function flushAnnouncements(): void {
   try { ui.announce(text); } catch { /* busy */ }
 }
 /** ui.js toast (3.6 s; keyed toasts replace the previous one of their key). */
+const toastHandles = new Map<string, ui.Toast>();
 export function toast(text: string, warn = false, opts: { key?: string; ms?: number } = {}): void {
-  if (opts.key) app.toasts = app.toasts.filter((t) => t.key !== opts.key);
-  app.toasts.push({ text, warn, until: clockMs + (opts.ms ?? 3600), ...(opts.key ? { key: opts.key } : {}) });
-  if (app.toasts.length > 4) app.toasts.shift();
+  if (opts.key) toastHandles.get(opts.key)?.dismiss();
+  const handle = ui.toast!(text, { kind: warn ? "warning" : "info", duration: (opts.ms ?? 3600) / 1000, position: "bottom", offset: 16, style: warn ? "toast-warn" : "toast", dismissible: false });
+  if (handle && opts.key) toastHandles.set(opts.key, handle);
 }
 export function sound(ev: audio.Sfx): void { audio.play(ev); }
 function haptic(ms: number): void {

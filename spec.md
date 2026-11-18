@@ -2,7 +2,7 @@
 
 **Status:** running specification of the shipped game (present tense).
 **Genre:** ordering puzzle · **Players:** 1, with asynchronous score comparison
-**Platform:** a StarHermit engine script game (TypeScript on the host API, engine 1.39.0, `engine.minor=39`), played natively by the StarHermit client and in browsers by the engine's web runtime; one package for both.
+**Platform:** a StarHermit engine script game (TypeScript on the host API, engine 1.44.1, `engine.minor=44`), played natively by the StarHermit client and in browsers by the engine's web runtime; one package for both.
 **Rendering:** `starhermit:scene` (a port of the three.js r160 gallery) with the whole interface on `starhermit:ui`.
 
 ## 1. Product vision
@@ -180,3 +180,13 @@ Success targets for the first public test: median first-play time under 20 secon
 The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `nl-NL`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `fi-FI`, `da-DE`, `lb-BE`, `eu-FR`, `ca-FR`, `oc-FR`, `ca-IT`, `oc-IT`, `ru-FI`, `ca-ES`, `eu-ES`, `gl-ES`, `ru-EE`, `su-ID`, `km-VN`, `co-FR`, `sl-IT`, `fur-IT`, `bew-ID`.
 
 <!-- regional-localization:end -->
+
+Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
+
+## Engine 1.44.1
+
+Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+
+The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Toasts use native engine stacking, styling, accessibility and lifetime management.

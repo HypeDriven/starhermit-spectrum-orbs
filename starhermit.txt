@@ -15,9 +15,11 @@ cover=cover.jpg
 launch=index.html
 engine.api=1
 engine.entry=native/main.ts
-engine.version=1.39.0
-engine.minor=39
+engine.version=1.44.1
+engine.minor=44
 engine.capabilities=platform,storage,clipboard
+engine.ray_tracing=auto
+engine.textures.compress=bc
 
 # Keyboard actions (players rebind keys and pads in the runtime's Options).
 # The gallery is also played with the pointer or a finger: tap a tube (or its
