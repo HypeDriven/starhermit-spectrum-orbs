@@ -2,7 +2,7 @@
 
 **Status:** running specification of the shipped game (present tense).
 **Genre:** ordering puzzle · **Players:** 1, with asynchronous score comparison
-**Platform:** a StarHermit engine script game (TypeScript on the host API, engine 1.47.0, `engine.minor=47`), played natively by the StarHermit client and in browsers by the engine's web runtime; one package for both.
+**Platform:** a StarHermit engine script game (TypeScript on the host API, engine 1.50.0, `engine.minor=50`), played natively by the StarHermit client and in browsers by the engine's web runtime; one package for both.
 **Rendering:** `starhermit:scene` (a port of the three.js r160 gallery) with the whole interface on `starhermit:ui`.
 
 ## 1. Product vision
@@ -183,9 +183,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.47.0
+## Engine 1.50.0
 
-Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.50.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
