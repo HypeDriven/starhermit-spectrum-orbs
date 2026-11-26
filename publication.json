@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T09:41:56.989866+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-23T17:02:39.935456+00:00",
+    "coverArtUpdatedAt": "2026-11-26T15:48:35.671751+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-23T17:02:39.924827+00:00",
+      "deployedAt": "2026-11-26T15:48:35.658767+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.47.0",
+      "engineVersion": "1.50.0",
       "deployWarning": null
     },
     "description": "Move colored orbs between tubes until each tube contains a single color.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-23T17:02:40.042Z",
-  "sourceCommit": "09d12f95f255fb596e504539601a736fd2baa39c",
-  "bytesReceived": 1851410,
-  "archiveSha256": "369227a2294821c653224a494a686fd1603e337a3c51c0ca3908cf9a74fc910a",
+  "publishedAt": "2026-11-26T15:48:34.794Z",
+  "sourceCommit": "fce69c99661b68434269d2682e93f0d2955e8780",
+  "bytesReceived": 1851416,
+  "archiveSha256": "1c31599b8087b4bc3c03b4d5eec85f256a974cde5444ae0c4ae0a673d2150a18",
   "indexSha256": "30c1869bbf123b0c93922b97007215eaed7854d0c9faaa8367d0875dee687184",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 1851410,
+    "bytesReceived": 1851416,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.47.0",
+    "engineVersion": "1.50.0",
     "deployWarning": null
   },
   "liveVerification": {
