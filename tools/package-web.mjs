@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const fallback = join(homedir(), 'sh/runtime/1.51.0/starhermit-1.51.0-linux-x86_64/starhermit');
+const fallback = join(homedir(), 'sh/runtime/1.53.0/starhermit-1.53.0-linux-x86_64/starhermit');
 const exe = process.env.STARHERMIT || (existsSync(fallback) ? fallback : null);
 if (!exe) { console.error('set STARHERMIT to the engine runtime'); process.exit(1); }
 execFileSync(exe, ['package', '--web', '.'], { cwd: root, stdio: 'inherit' });
